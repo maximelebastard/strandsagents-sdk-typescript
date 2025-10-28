@@ -1,6 +1,19 @@
 import { describe, it, expect } from 'vitest'
-import type { Message } from '../../types/messages'
+import type { Message, ContentBlock } from '../../types/messages'
 import { TestModelProvider, collectAggregated } from '../../__fixtures__/model-test-helpers'
+
+/**
+ * Type guard to check if an item is a ContentBlock that can be yielded from streamAggregated.
+ * Filters out ToolResultBlock and CachePointBlock which only appear in input messages.
+ */
+function isYieldedContentBlock(item: unknown): item is ContentBlock {
+  return (
+    typeof item === 'object' &&
+    item !== null &&
+    'type' in item &&
+    (item.type === 'textBlock' || item.type === 'toolUseBlock' || item.type === 'reasoningBlock')
+  )
+}
 
 describe('Model', () => {
   describe('streamAggregated', () => {
@@ -26,30 +39,19 @@ describe('Model', () => {
 
         const { items, result } = await collectAggregated(provider.streamAggregated(messages))
 
-        // Test that we got all the events and blocks
-        let streamEventCount = 0
-        let contentBlockCount = 0
-
-        for (const item of items) {
-          switch (item.type) {
-            case 'modelMessageStartEvent':
-            case 'modelContentBlockStartEvent':
-            case 'modelContentBlockDeltaEvent':
-            case 'modelContentBlockStopEvent':
-            case 'modelMessageStopEvent':
-            case 'modelMetadataEvent':
-              streamEventCount++
-              break
-            case 'textBlock':
-            case 'toolUseBlock':
-            case 'reasoningBlock':
-              contentBlockCount++
-              break
-          }
-        }
-
-        expect(streamEventCount).toBe(5)
-        expect(contentBlockCount).toBe(1)
+        // Verify all yielded items (events + aggregated content block)
+        expect(items).toEqual([
+          { type: 'modelMessageStartEvent', role: 'assistant' },
+          { type: 'modelContentBlockStartEvent', contentBlockIndex: 0 },
+          {
+            type: 'modelContentBlockDeltaEvent',
+            delta: { type: 'textDelta', text: 'Hello' },
+            contentBlockIndex: 0,
+          },
+          { type: 'modelContentBlockStopEvent', contentBlockIndex: 0 },
+          { type: 'textBlock', text: 'Hello' },
+          { type: 'modelMessageStopEvent', stopReason: 'endTurn' },
+        ])
 
         // Verify the returned message
         expect(result).toEqual({
@@ -89,9 +91,7 @@ describe('Model', () => {
 
         const { items, result } = await collectAggregated(provider.streamAggregated(messages))
 
-        const contentBlocks = items.filter(
-          (i) => i.type === 'textBlock' || i.type === 'toolUseBlock' || i.type === 'reasoningBlock'
-        )
+        const contentBlocks = items.filter(isYieldedContentBlock)
         expect(contentBlocks).toEqual([
           { type: 'textBlock', text: 'First' },
           { type: 'textBlock', text: 'Second' },
@@ -139,18 +139,8 @@ describe('Model', () => {
 
         const { items, result } = await collectAggregated(provider.streamAggregated(messages))
 
-        const contentBlocks = items.filter(
-          (i) => i.type === 'textBlock' || i.type === 'toolUseBlock' || i.type === 'reasoningBlock'
-        )
-        expect(contentBlocks).toHaveLength(1)
-        expect(contentBlocks[0]).toEqual({
-          type: 'toolUseBlock',
-          toolUseId: 'tool1',
-          name: 'get_weather',
-          input: { location: 'Paris' },
-        })
-
-        expect(result.content).toEqual([
+        const contentBlocks = items.filter(isYieldedContentBlock)
+        expect(contentBlocks).toEqual([
           {
             type: 'toolUseBlock',
             toolUseId: 'tool1',
@@ -158,6 +148,19 @@ describe('Model', () => {
             input: { location: 'Paris' },
           },
         ])
+
+        expect(result).toEqual({
+          type: 'message',
+          role: 'assistant',
+          content: [
+            {
+              type: 'toolUseBlock',
+              toolUseId: 'tool1',
+              name: 'get_weather',
+              input: { location: 'Paris' },
+            },
+          ],
+        })
       })
     })
 
@@ -188,9 +191,7 @@ describe('Model', () => {
 
         const { items, result } = await collectAggregated(provider.streamAggregated(messages))
 
-        const contentBlocks = items.filter(
-          (i) => i.type === 'textBlock' || i.type === 'toolUseBlock' || i.type === 'reasoningBlock'
-        )
+        const contentBlocks = items.filter(isYieldedContentBlock)
         expect(contentBlocks).toEqual([
           {
             type: 'reasoningBlock',
@@ -199,13 +200,17 @@ describe('Model', () => {
           },
         ])
 
-        expect(result.content).toEqual([
-          {
-            type: 'reasoningBlock',
-            text: 'Thinking about the problem',
-            signature: 'sig1',
-          },
-        ])
+        expect(result).toEqual({
+          type: 'message',
+          role: 'assistant',
+          content: [
+            {
+              type: 'reasoningBlock',
+              text: 'Thinking about the problem',
+              signature: 'sig1',
+            },
+          ],
+        })
       })
 
       it('omits signature if not present', async () => {
@@ -229,9 +234,7 @@ describe('Model', () => {
 
         const { items, result } = await collectAggregated(provider.streamAggregated(messages))
 
-        const contentBlocks = items.filter(
-          (i) => i.type === 'textBlock' || i.type === 'toolUseBlock' || i.type === 'reasoningBlock'
-        )
+        const contentBlocks = items.filter(isYieldedContentBlock)
         expect(contentBlocks).toEqual([
           {
             type: 'reasoningBlock',
@@ -239,12 +242,16 @@ describe('Model', () => {
           },
         ])
 
-        expect(result.content).toEqual([
-          {
-            type: 'reasoningBlock',
-            text: 'Thinking',
-          },
-        ])
+        expect(result).toEqual({
+          type: 'message',
+          role: 'assistant',
+          content: [
+            {
+              type: 'reasoningBlock',
+              text: 'Thinking',
+            },
+          ],
+        })
       })
     })
 
@@ -288,20 +295,22 @@ describe('Model', () => {
 
         const { items, result } = await collectAggregated(provider.streamAggregated(messages))
 
-        const contentBlocks = items.filter(
-          (i) => i.type === 'textBlock' || i.type === 'toolUseBlock' || i.type === 'reasoningBlock'
-        )
+        const contentBlocks = items.filter(isYieldedContentBlock)
         expect(contentBlocks).toEqual([
           { type: 'textBlock', text: 'Hello' },
           { type: 'toolUseBlock', toolUseId: 'tool1', name: 'get_weather', input: { city: 'Paris' } },
           { type: 'reasoningBlock', text: 'Reasoning', signature: 'sig1' },
         ])
 
-        expect(result.content).toEqual([
-          { type: 'textBlock', text: 'Hello' },
-          { type: 'toolUseBlock', toolUseId: 'tool1', name: 'get_weather', input: { city: 'Paris' } },
-          { type: 'reasoningBlock', text: 'Reasoning', signature: 'sig1' },
-        ])
+        expect(result).toEqual({
+          type: 'message',
+          role: 'assistant',
+          content: [
+            { type: 'textBlock', text: 'Hello' },
+            { type: 'toolUseBlock', toolUseId: 'tool1', name: 'get_weather', input: { city: 'Paris' } },
+            { type: 'reasoningBlock', text: 'Reasoning', signature: 'sig1' },
+          ],
+        })
       })
     })
   })

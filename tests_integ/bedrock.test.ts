@@ -385,7 +385,6 @@ describe.skipIf(!hasCredentials)('BedrockModel Integration Tests', () => {
       expect(contentBlockCount).toBe(1)
 
       // Verify the complete message structure is returned
-      expect(result).toBeDefined()
       expect(result).toMatchObject({
         type: 'message',
         role: 'assistant',
