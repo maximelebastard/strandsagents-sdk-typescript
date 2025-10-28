@@ -4,10 +4,10 @@
  * requiring actual API clients.
  */
 
-import { Model } from '../model'
-import type { Message, ContentBlock } from '../../types/messages'
-import type { ModelStreamEvent } from '../streaming'
-import type { BaseModelConfig, StreamOptions } from '../model'
+import { Model } from '../models/model'
+import type { Message, ContentBlock } from '../types/messages'
+import type { ModelStreamEvent } from '../models/streaming'
+import type { BaseModelConfig, StreamOptions } from '../models/model'
 
 /**
  * Test model provider that returns a predefined stream of events.
