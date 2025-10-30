@@ -77,6 +77,6 @@
     "zod": "^4.1.12"
   },
   "optionalDependencies": {
-    "openai": "^4.77.3"
+    "openai": "^6.7.0"
   }
 }
