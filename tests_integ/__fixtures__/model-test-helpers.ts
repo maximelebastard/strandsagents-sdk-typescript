@@ -12,7 +12,6 @@ async function loadApiKeysFromSecretsManager(): Promise<void> {
         region: process.env.AWS_REGION || 'us-east-1'
     });
     console.log("Loading API keys from Secrets Manager")
-    console.log(process.env.STRANDS_TEST_API_KEYS_SECRET_NAME)
     
     if (process.env.STRANDS_TEST_API_KEYS_SECRET_NAME) {
         try {
