@@ -85,10 +85,10 @@ export function tool<TInput extends z.ZodType, TReturn = unknown>(
     name,
     description,
     inputSchema: z.toJSONSchema(inputSchema) as JSONSchema,
-    callback: (input: unknown, toolContext: ToolContext):
-      | AsyncGenerator<JSONValue, JSONValue, never>
-      | Promise<JSONValue>
-      | JSONValue => {
+    callback: (
+      input: unknown,
+      toolContext: ToolContext
+    ): AsyncGenerator<JSONValue, JSONValue, never> | Promise<JSONValue> | JSONValue => {
       // Validate input using Zod schema (throws on validation error)
       const validatedInput = inputSchema.parse(input)
       // Execute user callback with validated input
@@ -110,12 +110,12 @@ export function tool<TInput extends z.ZodType, TReturn = unknown>(
       // Manually delegate to FunctionTool to preserve both yields and return value
       const generator = functionTool.stream(toolContext)
       let iterResult = await generator.next()
-      
+
       while (!iterResult.done) {
         yield iterResult.value
         iterResult = await generator.next()
       }
-      
+
       return iterResult.value
     },
 
@@ -129,15 +129,12 @@ export function tool<TInput extends z.ZodType, TReturn = unknown>(
 
       // Handle different return types
       if (result && typeof result === 'object' && Symbol.asyncIterator in result) {
-        // AsyncGenerator - consume and return final value
-        // Note: for await loop gives us yielded values, not the return value
-        // We capture the last yielded value as the result
-        let finalValue: TReturn | undefined = undefined
+        // AsyncGenerator - consume all yielded values and return the last one
+        let lastValue: TReturn | undefined = undefined
         for await (const value of result as AsyncGenerator<unknown, TReturn, undefined>) {
-          finalValue = value as TReturn
+          lastValue = value as TReturn
         }
-        // If no value was yielded, finalValue will be undefined
-        return finalValue as TReturn
+        return lastValue as TReturn
       } else {
         // Regular value or Promise - return directly
         return await result

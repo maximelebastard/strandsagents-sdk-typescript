@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest'
 import { z } from 'zod'
 import { tool } from '../zod-tool'
-import { createMockContext, extractEventData } from '../../__fixtures__/tool-test-helpers'
+import { createMockContext } from '../../__fixtures__/tool-helpers'
 import { collectGenerator } from '../../__fixtures__/model-test-helpers'
 
 describe('tool', () => {
@@ -17,9 +17,19 @@ describe('tool', () => {
       // Multiple related assertions in one test since setup is complex
       expect(myTool.toolName).toBe('testTool')
       expect(myTool.description).toBe('Test description')
-      expect(myTool.toolSpec.name).toBe('testTool')
-      expect(myTool.toolSpec.description).toBe('Test description')
-      expect(myTool.toolSpec.inputSchema.type).toBe('object')
+      expect(myTool.toolSpec).toEqual({
+        name: 'testTool',
+        description: 'Test description',
+        inputSchema: {
+          $schema: 'https://json-schema.org/draft/2020-12/schema',
+          type: 'object',
+          properties: {
+            value: { type: 'string' },
+          },
+          required: ['value'],
+          additionalProperties: false,
+        },
+      })
     })
   })
 
@@ -169,7 +179,7 @@ describe('tool', () => {
         const { items: events, result } = await collectGenerator(myTool.stream(context))
 
         expect(events).toHaveLength(3)
-        const eventData = extractEventData(events)
+        const eventData = events.map((e) => e.data)
         expect(eventData).toEqual(['Step 1', 'Step 2', 'Step 3'])
         expect(result.status).toBe('success')
       })

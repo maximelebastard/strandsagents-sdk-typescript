@@ -23,13 +23,3 @@ export function createMockContext(input: unknown, invocationState: Record<string
     invocationState,
   }
 }
-
-/**
- * Helper to extract event data from stream events.
- *
- * @param events - Array of objects with data property
- * @returns Array of data from events (undefined for events without data)
- */
-export function extractEventData(events: Array<{ data?: unknown }>): unknown[] {
-  return events.map((e) => e.data)
-}
