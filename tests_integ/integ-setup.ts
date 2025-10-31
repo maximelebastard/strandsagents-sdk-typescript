@@ -7,7 +7,7 @@ import { loadApiKeysFromSecretsManager } from './__fixtures__/model-test-helpers
 
 export async function setup(): Promise<void> {
   console.log('Global setup: Loading API keys from Secrets Manager...')
-  
+
   try {
     await loadApiKeysFromSecretsManager()
     console.log('Global setup complete: API keys loaded into environment')
