@@ -10,7 +10,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       approval-env: ${{ steps.collab-check.outputs.result }}
-      api-keys-secret-name: ${{ steps.set-secret.outputs.secret-name }}
+      strands-test-api-keys-secret-name: ${{ steps.pass-strands-test-secret.outputs.secret-name }}
     steps:
       - name: Collaborator Check
         uses: actions/github-script@v8
@@ -38,8 +38,8 @@ jobs:
               return "manual-approval"
             }
       
-      - name: Set secret output
-        id: set-secret
+      - name: Pass Strands test API keys secret name
+        id: pass-strands-test-secret
         run: |
           echo "secret-name=${{ secrets.STRANDS_TEST_API_KEYS_SECRET_NAME }}" >> $GITHUB_OUTPUT
   check-access-and-checkout:
@@ -78,5 +78,5 @@ jobs:
 
       - name: Run integration tests
         env:
-          STRANDS_TEST_API_KEYS_SECRET_NAME: ${{ needs.authorization-check.outputs.api-keys-secret-name }}
+          STRANDS_TEST_API_KEYS_SECRET_NAME: ${{ needs.authorization-check.outputs.strands-test-api-keys-secret-name }}
         run: npm run test:integ
