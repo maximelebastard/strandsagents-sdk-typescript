@@ -2,6 +2,7 @@ import { defineConfig } from 'vitest/config'
 
 export default defineConfig({
   test: {
+    globalSetup: './tests_integ/global-setup.ts', 
     projects: [
       {
         test: {
