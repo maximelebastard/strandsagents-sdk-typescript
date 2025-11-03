@@ -31,7 +31,17 @@ import {
 } from '@aws-sdk/client-bedrock-runtime'
 import { Model, type BaseModelConfig, type StreamOptions } from '../models/model.js'
 import type { Message, ContentBlock, ToolUseBlock } from '../types/messages.js'
-import type { ModelStreamEvent, ReasoningContentDelta, Usage } from '../models/streaming.js'
+import {
+  type ReasoningContentDelta,
+  type Usage,
+  ModelMessageStartEvent,
+  ModelContentBlockStartEvent,
+  ModelContentBlockDeltaEvent,
+  ModelContentBlockStopEvent,
+  ModelMessageStopEvent,
+  ModelMetadataEvent,
+  type ModelStreamEventData,
+} from '../models/streaming.js'
 import type { JSONValue } from '../types/json.js'
 import { ContextWindowOverflowError } from '../errors.js'
 import { ensureDefined } from '../types/validation.js'
@@ -333,7 +343,7 @@ export class BedrockModel extends Model<BedrockModelConfig> {
    * }
    * ```
    */
-  async *stream(messages: Message[], options?: StreamOptions): AsyncIterable<ModelStreamEvent> {
+  async *stream(messages: Message[], options?: StreamOptions): AsyncIterable<ModelStreamEventData> {
     try {
       // Format the request for Bedrock
       const request = this._formatRequest(messages, options)
@@ -529,9 +539,9 @@ export class BedrockModel extends Model<BedrockModelConfig> {
       case 'toolResultBlock': {
         const content = block.content.map((content) => {
           switch (content.type) {
-            case 'toolResultTextContent':
+            case 'textBlock':
               return { text: content.text }
-            case 'toolResultJsonContent':
+            case 'jsonBlock':
               return { json: content.json }
           }
         })
@@ -568,49 +578,56 @@ export class BedrockModel extends Model<BedrockModelConfig> {
 
       case 'cachePointBlock':
         return { cachePoint: { type: block.cacheType } }
+      default:
+        throw new Error(`Unsupported content block type: ${JSON.stringify(block)}`)
     }
   }
 
-  private _mapBedrockEventToSDKEvent(event: ConverseCommandOutput): ModelStreamEvent[] {
-    const events: ModelStreamEvent[] = []
+  private _mapBedrockEventToSDKEvent(event: ConverseCommandOutput): ModelStreamEventData[] {
+    const events: ModelStreamEventData[] = []
 
     // Message start
     const output = ensureDefined(event.output, 'event.output')
     const message = ensureDefined(output.message, 'output.message')
     const role = ensureDefined(message.role, 'message.role')
-    events.push({
-      type: 'modelMessageStartEvent',
+    events.push({modelMessageStartEvent: {
       role,
-    })
+    }})
 
     // Match on content blocks
     const blockHandlers = {
-      text: (textBlock: string): void => {
-        events.push({ type: 'modelContentBlockStartEvent' })
-        events.push({
-          type: 'modelContentBlockDeltaEvent',
+      text: (textBlock: string, index: number): void => {
+        events.push({modelContentBlockStartEvent: {}})
+        events.push({modelContentBlockDeltaEvent: {
+          contentBlockIndex: index,
           delta: { type: 'textDelta', text: textBlock },
-        })
-        events.push({ type: 'modelContentBlockStopEvent' })
+        }})
+        events.push({modelContentBlockStopEvent: {}})
       },
       toolUse: (block: ToolUseBlock): void => {
         events.push({
-          type: 'modelContentBlockStartEvent',
-          start: {
-            type: 'toolUseStart',
-            name: ensureDefined(block.name, 'toolUse.name'),
-            toolUseId: ensureDefined(block.toolUseId, 'toolUse.toolUseId'),
+          modelContentBlockStartEvent: {
+            start: {
+              type: 'toolUseStart',
+              name: ensureDefined(block.name, 'toolUse.name'),
+              toolUseId: ensureDefined(block.toolUseId, 'toolUse.toolUseId'),
+            },
           },
         })
         events.push({
-          type: 'modelContentBlockDeltaEvent',
-          delta: { type: 'toolUseInputDelta', input: JSON.stringify(ensureDefined(block.input, 'toolUse.input')) },
+          modelContentBlockDeltaEvent: {
+            delta: { type: 'toolUseInputDelta', input: JSON.stringify(ensureDefined(block.input, 'toolUse.input')) },
+          },
         })
-        events.push({ type: 'modelContentBlockStopEvent' })
+        events.push({
+          modelContentBlockStopEvent: {} ,
+        })
       },
       reasoningContent: (block: ReasoningContentBlock): void => {
         if (!block) return
-        events.push({ type: 'modelContentBlockStartEvent' })
+        events.push({
+          modelContentBlockStartEvent:{  },
+        })
 
         const delta: ReasoningContentDelta = { type: 'reasoningContentDelta' }
         if (block.reasoningText) {
@@ -621,10 +638,14 @@ export class BedrockModel extends Model<BedrockModelConfig> {
         }
 
         if (Object.keys(delta).length > 1) {
-          events.push({ type: 'modelContentBlockDeltaEvent', delta })
+          events.push({
+            modelContentBlockDeltaEvent: {delta },
+          })
         }
 
-        events.push({ type: 'modelContentBlockStopEvent' })
+        events.push({
+          modelContentBlockStopEvent: { },
+        })
       },
     }
 
@@ -643,13 +664,13 @@ export class BedrockModel extends Model<BedrockModelConfig> {
 
     const stopReasonRaw = ensureDefined(event.stopReason, 'event.stopReason') as string
     events.push({
-      type: 'modelMessageStopEvent',
-      stopReason: this._transformStopReason(stopReasonRaw, event),
+      modelMessageStopEvent: {
+        stopReason: this._transformStopReason(stopReasonRaw, event),
+      },
     })
 
     const usage = ensureDefined(event.usage, 'output.usage')
-    const metadataEvent: ModelStreamEvent = {
-      type: 'modelMetadataEvent',
+    const metadataEventData: { usage: Usage; metrics?: { latencyMs: number } } = {
       usage: {
         inputTokens: ensureDefined(usage.inputTokens, 'usage.inputTokens'),
         outputTokens: ensureDefined(usage.outputTokens, 'usage.outputTokens'),
@@ -658,12 +679,14 @@ export class BedrockModel extends Model<BedrockModelConfig> {
     }
 
     if (event.metrics) {
-      metadataEvent.metrics = {
+      metadataEventData.metrics = {
         latencyMs: ensureDefined(event.metrics.latencyMs, 'metrics.latencyMs'),
       }
     }
 
-    events.push(metadataEvent)
+    events.push({
+      modelMetadataEvent: metadataEventData,
+    })
 
     return events
   }
@@ -674,8 +697,8 @@ export class BedrockModel extends Model<BedrockModelConfig> {
    * @param chunk - Bedrock event chunk
    * @returns Array of SDK streaming events
    */
-  private _mapStreamedBedrockEventToSDKEvent(chunk: ConverseStreamOutput): ModelStreamEvent[] {
-    const events: ModelStreamEvent[] = []
+  private _mapStreamedBedrockEventToSDKEvent(chunk: ConverseStreamOutput): ModelStreamEventData[] {
+    const events: ModelStreamEventData[] = []
 
     // Extract the event type key
     const eventType = ensureDefined(Object.keys(chunk)[0], 'eventType') as keyof ConverseStreamOutput
@@ -684,30 +707,31 @@ export class BedrockModel extends Model<BedrockModelConfig> {
     switch (eventType) {
       case 'messageStart': {
         const data = eventData as BedrockMessageStartEvent
-        events.push({
-          type: 'modelMessageStartEvent',
+        events.push({modelMessageStartEvent: {
           role: ensureDefined(data.role, 'messageStart.role'),
-        })
+        }})
         break
       }
 
       case 'contentBlockStart': {
         const data = eventData as BedrockContentBlockStartEvent
 
-        const event: ModelStreamEvent = {
-          type: 'modelContentBlockStartEvent',
-        }
+        const eventData1: {
+          start?: { type: 'toolUseStart'; name: string; toolUseId: string }
+        } = {}
 
         if (data.start?.toolUse) {
           const toolUse = data.start.toolUse
-          event.start = {
+          eventData1.start = {
             type: 'toolUseStart',
             name: ensureDefined(toolUse.name, 'toolUse.name'),
             toolUseId: ensureDefined(toolUse.toolUseId, 'toolUse.toolUseId'),
           }
         }
 
-        events.push(event)
+        events.push({
+          modelContentBlockStartEvent: eventData1,
+        })
         break
       }
 
@@ -717,15 +741,17 @@ export class BedrockModel extends Model<BedrockModelConfig> {
         const deltaHandlers = {
           text: (textValue: string): void => {
             events.push({
-              type: 'modelContentBlockDeltaEvent',
-              delta: { type: 'textDelta', text: textValue },
+              modelContentBlockDeltaEvent: {
+                delta: { type: 'textDelta', text: textValue },
+              },
             })
           },
           toolUse: (toolUse: ToolUseBlockDelta): void => {
             if (!toolUse?.input) return
             events.push({
-              type: 'modelContentBlockDeltaEvent',
-              delta: { type: 'toolUseInputDelta', input: toolUse.input },
+              modelContentBlockDeltaEvent: {
+                delta: { type: 'toolUseInputDelta', input: toolUse.input },
+              },
             })
           },
           reasoningContent: (reasoning: ReasoningContentBlockDelta): void => {
@@ -736,7 +762,11 @@ export class BedrockModel extends Model<BedrockModelConfig> {
             if (reasoning.redactedContent) reasoningDelta.redactedContent = reasoning.redactedContent
 
             if (Object.keys(reasoningDelta).length > 1) {
-              events.push({ type: 'modelContentBlockDeltaEvent', delta: reasoningDelta })
+              events.push({
+                modelContentBlockDeltaEvent:{
+                  delta: reasoningDelta,
+                },
+              })
             }
           },
         }
@@ -756,7 +786,7 @@ export class BedrockModel extends Model<BedrockModelConfig> {
 
       case 'contentBlockStop': {
         events.push({
-          type: 'modelContentBlockStopEvent',
+          modelContentBlockStopEvent: {},
         })
         break
       }
@@ -764,27 +794,25 @@ export class BedrockModel extends Model<BedrockModelConfig> {
       case 'messageStop': {
         const data = eventData as BedrockMessageStopEvent
 
-        const event: ModelStreamEvent = {
-          type: 'modelMessageStopEvent',
-        }
-
         const stopReasonRaw = ensureDefined(data.stopReason, 'messageStop.stopReason') as string
-        event.stopReason = this._transformStopReason(stopReasonRaw, data)
+        const eventData2: { stopReason: string; additionalModelResponseFields?: JSONValue } = {
+          stopReason: this._transformStopReason(stopReasonRaw, data),
+        }
 
         if (data.additionalModelResponseFields) {
-          event.additionalModelResponseFields = data.additionalModelResponseFields
+          eventData2.additionalModelResponseFields = data.additionalModelResponseFields
         }
 
-        events.push(event)
+        events.push({
+          modelMessageStopEvent: eventData2,
+        })
         break
       }
 
       case 'metadata': {
         const data = eventData as BedrockConverseStreamMetadataEvent
 
-        const event: ModelStreamEvent = {
-          type: 'modelMetadataEvent',
-        }
+        const eventData3: { usage?: Usage; metrics?: { latencyMs: number }; trace?: unknown } = {}
 
         if (data.usage) {
           const usage = data.usage
@@ -802,20 +830,22 @@ export class BedrockModel extends Model<BedrockModelConfig> {
             usageInfo.cacheWriteInputTokens = usage.cacheWriteInputTokens
           }
 
-          event.usage = usageInfo
+          eventData3.usage = usageInfo
         }
 
         if (data.metrics) {
-          event.metrics = {
+          eventData3.metrics = {
             latencyMs: ensureDefined(data.metrics.latencyMs, 'metrics.latencyMs'),
           }
         }
 
         if (data.trace) {
-          event.trace = data.trace
+          eventData3.trace = data.trace
         }
 
-        events.push(event)
+        events.push({
+          modelMetadataEvent: eventData3,
+        })
         break
       }
       case 'internalServerException':

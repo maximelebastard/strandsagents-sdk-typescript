@@ -11,7 +11,7 @@ import OpenAI, { type ClientOptions } from 'openai'
 import { Model } from '../models/model.js'
 import type { BaseModelConfig, StreamOptions } from '../models/model.js'
 import type { Message } from '../types/messages.js'
-import type { ModelStreamEvent } from '../models/streaming.js'
+import type { ModelStreamEventData } from '../models/streaming.js'
 import { ContextWindowOverflowError } from '../errors.js'
 
 /**
@@ -303,7 +303,7 @@ export class OpenAIModel extends Model<OpenAIModelConfig> {
    * }
    * ```
    */
-  async *stream(messages: Message[], options?: StreamOptions): AsyncIterable<ModelStreamEvent> {
+  async *stream(messages: Message[], options?: StreamOptions): AsyncIterable<ModelStreamEventData> {
     // Validate messages array is not empty
     if (!messages || messages.length === 0) {
       throw new Error('At least one message is required')
@@ -326,14 +326,7 @@ export class OpenAIModel extends Model<OpenAIModelConfig> {
       const activeToolCalls = new Map<number, boolean>()
 
       // Buffer usage to emit before message stop
-      let bufferedUsage: {
-        type: 'modelMetadataEvent'
-        usage: {
-          inputTokens: number
-          outputTokens: number
-          totalTokens: number
-        }
-      } | null = null
+      let bufferedUsage: ModelStreamEventData | null = null
 
       // Process streaming response
       for await (const chunk of stream) {
@@ -342,11 +335,12 @@ export class OpenAIModel extends Model<OpenAIModelConfig> {
           // Buffer usage to emit before message stop
           if (chunk.usage) {
             bufferedUsage = {
-              type: 'modelMetadataEvent',
-              usage: {
-                inputTokens: chunk.usage.prompt_tokens ?? 0,
-                outputTokens: chunk.usage.completion_tokens ?? 0,
-                totalTokens: chunk.usage.total_tokens ?? 0,
+              modelMetadataEvent: {
+                usage: {
+                  inputTokens: chunk.usage.prompt_tokens ?? 0,
+                  outputTokens: chunk.usage.completion_tokens ?? 0,
+                  totalTokens: chunk.usage.total_tokens ?? 0,
+                },
               },
             }
           }
@@ -357,7 +351,7 @@ export class OpenAIModel extends Model<OpenAIModelConfig> {
         const events = this._mapOpenAIChunkToSDKEvents(chunk, streamState, activeToolCalls)
         for (const event of events) {
           // Emit buffered usage before message stop
-          if (event.type === 'modelMessageStopEvent' && bufferedUsage) {
+          if ('modelMessageStopEvent' in event && bufferedUsage) {
             yield bufferedUsage
             bufferedUsage = null
           }
@@ -418,7 +412,9 @@ export class OpenAIModel extends Model<OpenAIModelConfig> {
         let hasCachePoints = false
 
         for (const block of options.systemPrompt) {
-          if (block.type === 'textBlock') {
+          if (typeof block === 'string') {
+            textBlocks.push(block)
+          } else if (block.type === 'textBlock') {
             textBlocks.push(block.text)
           } else if (block.type === 'cachePointBlock') {
             hasCachePoints = true
@@ -551,9 +547,9 @@ export class OpenAIModel extends Model<OpenAIModelConfig> {
             // Note: OpenAI tool messages only accept string content (not structured JSON)
             const contentText = toolResult.content
               .map((c) => {
-                if (c.type === 'toolResultTextContent') {
+                if (c.type === 'textBlock') {
                   return c.text
-                } else if (c.type === 'toolResultJsonContent') {
+                } else if (c.type === 'jsonBlock') {
                   try {
                     return JSON.stringify(c.json)
                     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -668,8 +664,8 @@ export class OpenAIModel extends Model<OpenAIModelConfig> {
     chunk: { choices: unknown[] },
     streamState: { messageStarted: boolean; textContentBlockStarted: boolean },
     activeToolCalls: Map<number, boolean>
-  ): ModelStreamEvent[] {
-    const events: ModelStreamEvent[] = []
+  ): ModelStreamEventData[] {
+    const events: ModelStreamEventData[] = []
 
     // Validate choices array has at least one element
     if (!chunk.choices || chunk.choices.length === 0) {
@@ -697,8 +693,9 @@ export class OpenAIModel extends Model<OpenAIModelConfig> {
     if (delta?.role && !streamState.messageStarted) {
       streamState.messageStarted = true
       events.push({
-        type: 'modelMessageStartEvent',
-        role: delta.role as 'user' | 'assistant',
+        modelMessageStartEvent: {
+          role: delta.role as 'user' | 'assistant',
+        },
       })
     }
 
@@ -708,15 +705,17 @@ export class OpenAIModel extends Model<OpenAIModelConfig> {
       if (!streamState.textContentBlockStarted) {
         streamState.textContentBlockStarted = true
         events.push({
-          type: 'modelContentBlockStartEvent',
+          modelContentBlockStartEvent: {
+          },
         })
       }
 
       events.push({
-        type: 'modelContentBlockDeltaEvent',
-        delta: {
-          type: 'textDelta',
-          text: delta.content,
+        modelContentBlockDeltaEvent: {
+          delta: {
+            type: 'textDelta',
+            text: delta.content,
+          },
         },
       })
     }
@@ -733,11 +732,12 @@ export class OpenAIModel extends Model<OpenAIModelConfig> {
         // If tool call has id and name, it's the start of a new tool call
         if (toolCall.id && toolCall.function?.name) {
           events.push({
-            type: 'modelContentBlockStartEvent',
-            start: {
-              type: 'toolUseStart',
-              name: toolCall.function.name,
-              toolUseId: toolCall.id,
+            modelContentBlockStartEvent: {
+              start: {
+                type: 'toolUseStart',
+                name: toolCall.function.name,
+                toolUseId: toolCall.id,
+              },
             },
           })
           // Track active tool calls
@@ -747,10 +747,11 @@ export class OpenAIModel extends Model<OpenAIModelConfig> {
         // If tool call has arguments, it's a delta
         if (toolCall.function?.arguments) {
           events.push({
-            type: 'modelContentBlockDeltaEvent',
-            delta: {
-              type: 'toolUseInputDelta',
-              input: toolCall.function.arguments,
+            modelContentBlockDeltaEvent: {
+              delta: {
+                type: 'toolUseInputDelta',
+                input: toolCall.function.arguments,
+              },
             },
           })
         }
@@ -762,7 +763,8 @@ export class OpenAIModel extends Model<OpenAIModelConfig> {
       // Emit stop event for text content if it was started
       if (streamState.textContentBlockStarted) {
         events.push({
-          type: 'modelContentBlockStopEvent',
+          modelContentBlockStopEvent: {
+          },
         })
         streamState.textContentBlockStarted = false
       }
@@ -770,7 +772,8 @@ export class OpenAIModel extends Model<OpenAIModelConfig> {
       // Emit stop events for all active tool calls and delete during iteration
       for (const [index] of activeToolCalls) {
         events.push({
-          type: 'modelContentBlockStopEvent',
+          modelContentBlockStopEvent: {
+          },
         })
         activeToolCalls.delete(index)
       }
@@ -796,8 +799,9 @@ export class OpenAIModel extends Model<OpenAIModelConfig> {
       }
 
       events.push({
-        type: 'modelMessageStopEvent',
-        stopReason,
+        modelMessageStopEvent: {
+          stopReason,
+        },
       })
     }
 

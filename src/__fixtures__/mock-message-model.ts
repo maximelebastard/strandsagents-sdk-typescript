@@ -7,7 +7,7 @@
 
 import { Model } from '../models/model.js'
 import type { Message, ContentBlock } from '../types/messages.js'
-import type { ModelStreamEvent } from '../models/streaming.js'
+import type { ModelStreamEventData } from '../models/streaming.js'
 import type { BaseModelConfig, StreamOptions } from '../models/model.js'
 
 /**
@@ -94,7 +94,7 @@ export class MockMessageModel extends Model<BaseModelConfig> {
    * @param _options - Streaming options (ignored by test provider)
    * @returns Async iterable of ModelStreamEvents
    */
-  async *stream(_messages: Message[], _options?: StreamOptions): AsyncGenerator<ModelStreamEvent> {
+  async *stream(_messages: Message[], _options?: StreamOptions): AsyncGenerator<ModelStreamEventData> {
     // Determine which turn index to use
     // For single turn, always use 0. For multiple turns, use current index
     const turnIndex = this._turns.length === 1 ? 0 : this._currentTurnIndex
@@ -129,9 +129,9 @@ export class MockMessageModel extends Model<BaseModelConfig> {
   private async *_generateEventsForContent(
     content: ContentBlock[],
     stopReason: string
-  ): AsyncGenerator<ModelStreamEvent> {
+  ): AsyncGenerator<ModelStreamEventData> {
     // Yield message start event (always assistant role)
-    yield { type: 'modelMessageStartEvent', role: 'assistant' }
+    yield { modelMessageStartEvent: { role: 'assistant' } }
 
     // Yield events for each content block
     for (let i = 0; i < content.length; i++) {
@@ -140,7 +140,7 @@ export class MockMessageModel extends Model<BaseModelConfig> {
     }
 
     // Yield message stop event
-    yield { type: 'modelMessageStopEvent', stopReason }
+    yield { modelMessageStopEvent: { stopReason } }
   }
 
   /**
@@ -173,9 +173,9 @@ export class MockMessageModel extends Model<BaseModelConfig> {
   /**
    * Generates appropriate ModelStreamEvents for a message.
    */
-  private async *_generateEventsForMessage(message: Message, stopReason: string): AsyncGenerator<ModelStreamEvent> {
+  private async *_generateEventsForMessage(message: Message, stopReason: string): AsyncGenerator<ModelStreamEventData> {
     // Yield message start event
-    yield { type: 'modelMessageStartEvent', role: message.role }
+    yield { modelMessageStartEvent: { role: message.role } }
 
     // Yield events for each content block
     for (let i = 0; i < message.content.length; i++) {
@@ -184,37 +184,42 @@ export class MockMessageModel extends Model<BaseModelConfig> {
     }
 
     // Yield message stop event
-    yield { type: 'modelMessageStopEvent', stopReason }
+    yield { modelMessageStopEvent: { stopReason } }
   }
 
   /**
    * Generates appropriate ModelStreamEvents for a content block.
    */
-  private async *_generateEventsForBlock(block: ContentBlock): AsyncGenerator<ModelStreamEvent> {
+  private async *_generateEventsForBlock(
+    block: ContentBlock,
+  ): AsyncGenerator<ModelStreamEventData> {
     switch (block.type) {
       case 'textBlock':
-        yield { type: 'modelContentBlockStartEvent' }
+        yield { modelContentBlockStartEvent: {  } }
         yield {
-          type: 'modelContentBlockDeltaEvent',
-          delta: { type: 'textDelta', text: block.text },
+          modelContentBlockDeltaEvent: {
+            delta: { type: 'textDelta', text: block.text },
+          },
         }
-        yield { type: 'modelContentBlockStopEvent' }
+        yield { modelContentBlockStopEvent: {  } }
         break
 
       case 'toolUseBlock':
         yield {
-          type: 'modelContentBlockStartEvent',
-          start: { type: 'toolUseStart', name: block.name, toolUseId: block.toolUseId },
+          modelContentBlockStartEvent: {
+            start: { type: 'toolUseStart', name: block.name, toolUseId: block.toolUseId },
+          },
         }
         yield {
-          type: 'modelContentBlockDeltaEvent',
-          delta: { type: 'toolUseInputDelta', input: JSON.stringify(block.input) },
+          modelContentBlockDeltaEvent: {
+            delta: { type: 'toolUseInputDelta', input: JSON.stringify(block.input) },
+          },
         }
-        yield { type: 'modelContentBlockStopEvent' }
+        yield { modelContentBlockStopEvent: {  } }
         break
 
       case 'reasoningBlock': {
-        yield { type: 'modelContentBlockStartEvent' }
+        yield { modelContentBlockStartEvent: {  } }
         // Build delta object with only defined properties
         const delta: {
           type: 'reasoningContentDelta'
@@ -234,17 +239,18 @@ export class MockMessageModel extends Model<BaseModelConfig> {
           delta.redactedContent = block.redactedContent
         }
         yield {
-          type: 'modelContentBlockDeltaEvent',
-          delta,
+          modelContentBlockDeltaEvent: {
+            delta,
+          },
         }
-        yield { type: 'modelContentBlockStopEvent' }
+        yield { modelContentBlockStopEvent: {  } }
         break
       }
 
       case 'cachePointBlock':
         // CachePointBlock doesn't generate delta events
-        yield { type: 'modelContentBlockStartEvent' }
-        yield { type: 'modelContentBlockStopEvent' }
+        yield { modelContentBlockStartEvent: {  } }
+        yield { modelContentBlockStopEvent: {  } }
         break
 
       case 'toolResultBlock':

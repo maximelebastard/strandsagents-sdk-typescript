@@ -2,10 +2,42 @@ import type { Role, StopReason } from '../types/messages.js'
 import type { JSONValue } from '../types/json.js'
 
 /**
- * Union type representing all possible streaming events from a model provider.
- * This is a discriminated union where each event has a unique type field.
+ * Union type representing all possible streaming event data from a model provider.
+ * This is used by the raw `stream()` method and is a discriminated union where
+ * the object key determines the event type.
  *
- * This allows for type-safe event handling using switch statements.
+ * This allows for type-safe event handling using the `in` operator.
+ *
+ * @example
+ * ```typescript
+ * for (const event of stream) {
+ *   if ('modelMessageStartEvent' in event) {
+ *     console.log(event.modelMessageStartEvent.role)
+ *   }
+ * }
+ * ```
+ */
+export type ModelStreamEventData =
+  | { modelMessageStartEvent: ModelMessageStartEventData }
+  | { modelContentBlockStartEvent: ModelContentBlockStartEventData }
+  | { modelContentBlockDeltaEvent: ModelContentBlockDeltaEventData }
+  | { modelContentBlockStopEvent: ModelContentBlockStopEventData }
+  | { modelMessageStopEvent: ModelMessageStopEventData }
+  | { modelMetadataEvent: ModelMetadataEventData }
+
+/**
+ * Union type of streaming event classes from a model provider.
+ * This is used by the `streamAggregated()` method and provides class instances
+ * with type discriminators for easier type narrowing.
+ *
+ * @example
+ * ```typescript
+ * for (const event of aggregatedStream) {
+ *   if (event.type === 'modelMessageStartEvent') {
+ *     console.log(event.role)
+ *   }
+ * }
+ * ```
  */
 export type ModelStreamEvent =
   | ModelMessageStartEvent
@@ -16,14 +48,9 @@ export type ModelStreamEvent =
   | ModelMetadataEvent
 
 /**
- * Event emitted when a new message starts in the stream.
+ * Data for a message start event.
  */
-export interface ModelMessageStartEvent {
-  /**
-   * Discriminator for message start events.
-   */
-  type: 'modelMessageStartEvent'
-
+export interface ModelMessageStartEventData {
   /**
    * The role of the message being started.
    */
@@ -31,13 +58,28 @@ export interface ModelMessageStartEvent {
 }
 
 /**
- * Event emitted when a new content block starts in the stream.
+ * Event emitted when a new message starts in the stream.
  */
-export interface ModelContentBlockStartEvent {
+export class ModelMessageStartEvent implements ModelMessageStartEventData {
   /**
-   * Discriminator for content block start events.
+   * Discriminator for message start events.
    */
-  type: 'modelContentBlockStartEvent'
+  readonly type = 'modelMessageStartEvent' as const
+
+  /**
+   * The role of the message being started.
+   */
+  readonly role: Role
+
+  constructor(data: ModelMessageStartEventData) {
+    this.role = data.role
+  }
+}
+
+/**
+ * Data for a content block start event.
+ */
+export interface ModelContentBlockStartEventData {
 
   /**
    * Information about the content block being started.
@@ -47,13 +89,32 @@ export interface ModelContentBlockStartEvent {
 }
 
 /**
- * Event emitted when there is new content in a content block.
+ * Event emitted when a new content block starts in the stream.
  */
-export interface ModelContentBlockDeltaEvent {
+export class ModelContentBlockStartEvent implements ModelContentBlockStartEventData {
   /**
-   * Discriminator for content block delta events.
+   * Discriminator for content block start events.
    */
-  type: 'modelContentBlockDeltaEvent'
+  readonly type = 'modelContentBlockStartEvent' as const
+
+
+  /**
+   * Information about the content block being started.
+   * Only present for tool use blocks.
+   */
+  readonly start?: ContentBlockStart
+
+  constructor(data: ModelContentBlockStartEventData) {
+    if (data.start !== undefined) {
+      this.start = data.start
+    }
+  }
+}
+
+/**
+ * Data for a content block delta event.
+ */
+export interface ModelContentBlockDeltaEventData {
 
   /**
    * The incremental content update.
@@ -62,28 +123,56 @@ export interface ModelContentBlockDeltaEvent {
 }
 
 /**
- * Event emitted when a content block completes.
+ * Event emitted when there is new content in a content block.
  */
-export interface ModelContentBlockStopEvent {
+export class ModelContentBlockDeltaEvent implements ModelContentBlockDeltaEventData {
   /**
-   * Discriminator for content block stop events.
+   * Discriminator for content block delta events.
    */
-  type: 'modelContentBlockStopEvent'
+  readonly type = 'modelContentBlockDeltaEvent' as const
+
+  /**
+   * The incremental content update.
+   */
+  readonly delta: ContentBlockDelta
+
+  constructor(data: ModelContentBlockDeltaEventData) {
+    this.delta = data.delta
+  }
 }
 
 /**
- * Event emitted when the message completes.
+ * Data for a content block stop event.
  */
-export interface ModelMessageStopEvent {
-  /**
-   * Discriminator for message stop events.
-   */
-  type: 'modelMessageStopEvent'
+export interface ModelContentBlockStopEventData {
+}
 
+/**
+ * Event emitted when a content block completes.
+ */
+export class ModelContentBlockStopEvent implements ModelContentBlockStopEventData {
+  /**
+   * Discriminator for content block stop events.
+   */
+  readonly type = 'modelContentBlockStopEvent' as const
+
+  /**
+   * Index of the content block that stopped.
+   */
+  readonly contentBlockIndex?: number
+
+  constructor(data: ModelContentBlockStopEventData) {
+  }
+}
+
+/**
+ * Data for a message stop event.
+ */
+export interface ModelMessageStopEventData {
   /**
    * Reason why generation stopped.
    */
-  stopReason?: StopReason
+  stopReason: StopReason
 
   /**
    * Additional provider-specific response fields.
@@ -92,15 +181,36 @@ export interface ModelMessageStopEvent {
 }
 
 /**
- * Event containing metadata about the stream.
- * Includes usage statistics, performance metrics, and trace information.
+ * Event emitted when the message completes.
  */
-export interface ModelMetadataEvent {
+export class ModelMessageStopEvent implements ModelMessageStopEventData {
   /**
-   * Discriminator for metadata events.
+   * Discriminator for message stop events.
    */
-  type: 'modelMetadataEvent'
+  readonly type = 'modelMessageStopEvent' as const
 
+  /**
+   * Reason why generation stopped.
+   */
+  readonly stopReason: StopReason
+
+  /**
+   * Additional provider-specific response fields.
+   */
+  readonly additionalModelResponseFields?: JSONValue
+
+  constructor(data: ModelMessageStopEventData) {
+    this.stopReason = data.stopReason
+    if (data.additionalModelResponseFields !== undefined) {
+      this.additionalModelResponseFields = data.additionalModelResponseFields
+    }
+  }
+}
+
+/**
+ * Data for a metadata event.
+ */
+export interface ModelMetadataEventData {
   /**
    * Token usage information.
    */
@@ -115,6 +225,44 @@ export interface ModelMetadataEvent {
    * Trace information for observability.
    */
   trace?: unknown
+}
+
+/**
+ * Event containing metadata about the stream.
+ * Includes usage statistics, performance metrics, and trace information.
+ */
+export class ModelMetadataEvent implements ModelMetadataEventData {
+  /**
+   * Discriminator for metadata events.
+   */
+  readonly type = 'modelMetadataEvent' as const
+
+  /**
+   * Token usage information.
+   */
+  readonly usage?: Usage
+
+  /**
+   * Performance metrics.
+   */
+  readonly metrics?: Metrics
+
+  /**
+   * Trace information for observability.
+   */
+  readonly trace?: unknown
+
+  constructor(data: ModelMetadataEventData) {
+    if (data.usage !== undefined) {
+      this.usage = data.usage
+    }
+    if (data.metrics !== undefined) {
+      this.metrics = data.metrics
+    }
+    if (data.trace !== undefined) {
+      this.trace = data.trace
+    }
+  }
 }
 
 /**

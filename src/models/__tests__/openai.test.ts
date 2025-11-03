@@ -215,7 +215,7 @@ describe('OpenAIModel', () => {
 
         // Should still get valid events
         expect(events.length).toBeGreaterThan(0)
-        expect(events[0]?.type).toBe('modelMessageStartEvent')
+        expect(events[0]).toBe(true)
       })
 
       it('throws error for streaming with n > 1', async () => {
@@ -298,7 +298,7 @@ describe('OpenAIModel', () => {
                 type: 'toolResultBlock',
                 toolUseId: 'tool-123',
                 status: 'error',
-                content: [{ type: 'toolResultTextContent', text: 'Division by zero' }],
+                content: [{ type: 'textBlock', text: 'Division by zero' }],
               },
             ],
           },
@@ -309,7 +309,7 @@ describe('OpenAIModel', () => {
 
         // Verify we got a response
         expect(events.length).toBeGreaterThan(0)
-        expect(events[0]?.type).toBe('modelMessageStartEvent')
+        expect(events[0]).toMatchObject({ modelMessageStartEvent: { role: 'assistant' } })
       })
 
       it('throws error for circular reference in tool input', async () => {
@@ -385,22 +385,26 @@ describe('OpenAIModel', () => {
 
         // Now includes complete content block lifecycle: start, deltas, stop
         expect(events).toHaveLength(6)
-        expect(events[0]).toEqual({ type: 'modelMessageStartEvent', role: 'assistant' })
+        expect(events[0]).toEqual({ modelMessageStartEvent: { role: 'assistant' } })
         expect(events[1]).toEqual({
-          type: 'modelContentBlockStartEvent',
+          modelContentBlockStartEvent: {
+          },
         })
         expect(events[2]).toEqual({
-          type: 'modelContentBlockDeltaEvent',
-          delta: { type: 'textDelta', text: 'Hello' },
+          modelContentBlockDeltaEvent: {
+            delta: { type: 'textDelta', text: 'Hello' },
+          },
         })
         expect(events[3]).toEqual({
-          type: 'modelContentBlockDeltaEvent',
-          delta: { type: 'textDelta', text: ' world' },
+          modelContentBlockDeltaEvent: {
+            delta: { type: 'textDelta', text: ' world' },
+          },
         })
         expect(events[4]).toEqual({
-          type: 'modelContentBlockStopEvent',
+          modelContentBlockStopEvent: {
+          },
         })
-        expect(events[5]).toEqual({ type: 'modelMessageStopEvent', stopReason: 'endTurn' })
+        expect(events[5]).toEqual({ modelMessageStopEvent: { stopReason: 'endTurn' } })
       })
     })
 
@@ -423,14 +427,15 @@ describe('OpenAIModel', () => {
 
       const events = await collectIterator(provider.stream(messages))
 
-      const metadataEvent = events.find((e) => e.type === 'modelMetadataEvent')
+      const metadataEvent = events.find((e) => 'modelMetadataEvent' in e)
       expect(metadataEvent).toBeDefined()
       expect(metadataEvent).toEqual({
-        type: 'modelMetadataEvent',
-        usage: {
-          inputTokens: 10,
-          outputTokens: 5,
-          totalTokens: 15,
+        modelMetadataEvent: {
+          usage: {
+            inputTokens: 10,
+            outputTokens: 5,
+            totalTokens: 15,
+          },
         },
       })
     })
@@ -454,14 +459,15 @@ describe('OpenAIModel', () => {
 
       const events = await collectIterator(provider.stream(messages))
 
-      const metadataEvent = events.find((e) => e.type === 'modelMetadataEvent')
+      const metadataEvent = events.find((e) => 'modelMetadataEvent' in e)
       expect(metadataEvent).toBeDefined()
       expect(metadataEvent).toEqual({
-        type: 'modelMetadataEvent',
-        usage: {
-          inputTokens: 0,
-          outputTokens: 0,
-          totalTokens: 0,
+        modelMetadataEvent: {
+          usage: {
+            inputTokens: 0,
+            outputTokens: 0,
+            totalTokens: 0,
+          },
         },
       })
     })
@@ -488,9 +494,9 @@ describe('OpenAIModel', () => {
       const events = await collectIterator(provider.stream(messages))
 
       // Should not emit event for empty content
-      const contentEvents = events.filter((e) => e.type === 'modelContentBlockDeltaEvent')
+      const contentEvents = events.filter((e) => 'modelContentBlockDeltaEvent' in e)
       expect(contentEvents).toHaveLength(1)
-      expect((contentEvents[0] as any).delta.text).toBe('Hello')
+      expect((contentEvents[0] as any).modelContentBlockDeltaEvent.delta.text).toBe('Hello')
     })
 
     it('prevents duplicate message start events', async () => {
@@ -515,7 +521,7 @@ describe('OpenAIModel', () => {
       const events = await collectIterator(provider.stream(messages))
 
       // Should only have one message start event
-      const startEvents = events.filter((e) => e.type === 'modelMessageStartEvent')
+      const startEvents = events.filter((e) => 'modelMessageStartEvent' in e)
       expect(startEvents).toHaveLength(1)
     })
   })
@@ -576,31 +582,35 @@ describe('OpenAIModel', () => {
       const events = await collectIterator(provider.stream(messages))
 
       // Verify key events in sequence
-      expect(events[0]).toEqual({ type: 'modelMessageStartEvent', role: 'assistant' })
+      expect(events[0]).toEqual({ modelMessageStartEvent: { role: 'assistant' } })
       expect(events[1]).toEqual({
-        type: 'modelContentBlockStartEvent',
-        start: {
-          type: 'toolUseStart',
-          name: 'calculator',
-          toolUseId: 'call_123',
+        modelContentBlockStartEvent: {
+          start: {
+            type: 'toolUseStart',
+            name: 'calculator',
+            toolUseId: 'call_123',
+          },
         },
       })
       expect(events[2]).toEqual({
-        type: 'modelContentBlockDeltaEvent',
-        delta: {
-          type: 'toolUseInputDelta',
-          input: '{"expr',
+        modelContentBlockDeltaEvent: {
+          delta: {
+            type: 'toolUseInputDelta',
+            input: '{"expr',
+          },
         },
       })
       expect(events[3]).toEqual({
-        type: 'modelContentBlockDeltaEvent',
-        delta: {
-          type: 'toolUseInputDelta',
-          input: '":"2+2"}',
+        modelContentBlockDeltaEvent: {
+          delta: {
+            type: 'toolUseInputDelta',
+            input: '":"2+2"}',
+          },
         },
       })
       expect(events[4]).toEqual({
-        type: 'modelContentBlockStopEvent',
+        modelContentBlockStopEvent: {
+        },
       })
       expect(events[5]).toEqual({ type: 'modelMessageStopEvent', stopReason: 'toolUse' })
     })
@@ -655,10 +665,10 @@ describe('OpenAIModel', () => {
       const events = await collectIterator(provider.stream(messages))
 
       // Should emit stop events for both tool calls
-      const stopEvents = events.filter((e) => e.type === 'modelContentBlockStopEvent')
+      const stopEvents = events.filter((e) => 'modelContentBlockStopEvent' in e)
       expect(stopEvents).toHaveLength(2)
-      expect(stopEvents[0]).toEqual({ type: 'modelContentBlockStopEvent' })
-      expect(stopEvents[1]).toEqual({ type: 'modelContentBlockStopEvent' })
+      expect(stopEvents[0]).toEqual({ modelContentBlockStopEvent: {  } })
+      expect(stopEvents[1]).toEqual({ modelContentBlockStopEvent: {  } })
     })
 
     it('skips tool calls with invalid index', async () => {
@@ -697,9 +707,7 @@ describe('OpenAIModel', () => {
       const events = await collectIterator(provider.stream(messages))
 
       // Should not emit any tool-related events
-      const toolEvents = events.filter(
-        (e) => e.type === 'modelContentBlockStartEvent' || e.type === 'modelContentBlockDeltaEvent'
-      )
+      const toolEvents = events.filter((e) => 'modelContentBlockStartEvent' in e || 'modelContentBlockDeltaEvent' in e)
       expect(toolEvents).toHaveLength(0)
 
       // The important thing is that invalid tool calls don't crash the stream
@@ -743,8 +751,8 @@ describe('OpenAIModel', () => {
 
       // Extract and concatenate all tool input deltas
       const inputDeltas = events
-        .filter((e) => e.type === 'modelContentBlockDeltaEvent' && (e as any).delta.type === 'toolUseInputDelta')
-        .map((e) => (e as any).delta.input)
+        .filter((e) => 'modelContentBlockDeltaEvent' in e && (e as any).modelContentBlockDeltaEvent.delta.type === 'toolUseInputDelta')
+        .map((e) => (e as any).modelContentBlockDeltaEvent.delta.input)
 
       const reassembled = inputDeltas.join('')
 
@@ -788,20 +796,20 @@ describe('OpenAIModel', () => {
       const events = await collectIterator(provider.stream(messages))
 
       // Should have text deltas followed by tool events
-      expect(events[0]?.type).toBe('modelMessageStartEvent')
+      expect('modelMessageStartEvent' in events[0]!).toBe(true)
       // Text content block start
-      expect(events[1]?.type).toBe('modelContentBlockStartEvent')
+      expect('modelContentBlockStartEvent' in events[1]!).toBe(true)
       // Text deltas
-      expect(events[2]?.type).toBe('modelContentBlockDeltaEvent')
-      expect((events[2] as any).delta.type).toBe('textDelta')
-      expect((events[2] as any).delta.text).toBe('Let me calculate ')
+      expect('modelContentBlockDeltaEvent' in events[2]!).toBe(true)
+      expect((events[2] as any).modelContentBlockDeltaEvent.delta.type).toBe('textDelta')
+      expect((events[2] as any).modelContentBlockDeltaEvent.delta.text).toBe('Let me calculate ')
       // Tool events should follow
       const toolStartEvent = events.find(
-        (e) => e.type === 'modelContentBlockStartEvent' && (e as any).start?.type === 'toolUseStart'
+        (e) => 'modelContentBlockStartEvent' in e && (e as any).modelContentBlockStartEvent.start?.type === 'toolUseStart'
       )
       expect(toolStartEvent).toBeDefined()
       // Both text and tool blocks should have stop events
-      const stopEvents = events.filter((e) => e.type === 'modelContentBlockStopEvent')
+      const stopEvents = events.filter((e) => 'modelContentBlockStopEvent' in e)
       expect(stopEvents.length).toBeGreaterThan(0)
     })
   })
@@ -830,9 +838,9 @@ describe('OpenAIModel', () => {
 
         const events = await collectIterator(provider.stream(messages))
 
-        const stopEvent = events.find((e) => e.type === 'modelMessageStopEvent')
+        const stopEvent = events.find((e) => 'modelMessageStopEvent' in e)
         expect(stopEvent).toBeDefined()
-        expect((stopEvent as any).stopReason).toBe(sdk)
+        expect((stopEvent as any).modelMessageStopEvent.stopReason).toBe(sdk)
       }
     })
 
@@ -852,9 +860,9 @@ describe('OpenAIModel', () => {
       const events = await collectIterator(provider.stream(messages))
 
       // Should convert unknown stop reason to camelCase
-      const stopEvent = events.find((e) => e.type === 'modelMessageStopEvent')
+      const stopEvent = events.find((e) => 'modelMessageStopEvent' in e)
       expect(stopEvent).toBeDefined()
-      expect((stopEvent as any).stopReason).toBe('newUnknownReason')
+      expect((stopEvent as any).modelMessageStopEvent.stopReason).toBe('newUnknownReason')
 
       // Note: Warning logging is verified manually/visually since console.warn spying
       // has test isolation issues when running the full test suite
@@ -982,7 +990,7 @@ describe('OpenAIModel', () => {
       const provider = new OpenAIModel({ modelId: 'gpt-4o', client: mockClient })
       const messages: Message[] = [{ type: 'message', role: 'user', content: [{ type: 'textBlock', text: 'Hello' }] }]
 
-      collectIterator(
+      await collectIterator(
         provider.stream(messages, {
           systemPrompt: [
             { type: 'textBlock', text: 'You are a helpful assistant' },

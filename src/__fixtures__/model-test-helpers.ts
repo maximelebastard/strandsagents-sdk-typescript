@@ -6,7 +6,7 @@
 
 import { Model } from '../models/model.js'
 import type { Message } from '../types/messages.js'
-import type { ModelStreamEvent } from '../models/streaming.js'
+import type { ModelStreamEventData } from '../models/streaming.js'
 import type { BaseModelConfig, StreamOptions } from '../models/model.js'
 
 /**
@@ -17,26 +17,26 @@ import type { BaseModelConfig, StreamOptions } from '../models/model.js'
  * @example
  * ```typescript
  * const provider = new TestModelProvider(async function* () {
- *   yield { type: 'modelMessageStartEvent', role: 'assistant' }
- *   yield { type: 'modelContentBlockStartEvent' }
- *   yield { type: 'modelContentBlockDeltaEvent', delta: { type: 'textDelta', text: 'Hello' } }
- *   yield { type: 'modelContentBlockStopEvent' }
- *   yield { type: 'modelMessageStopEvent', stopReason: 'endTurn' }
+ *   yield { modelMessageStartEvent: { role: 'assistant' } }
+ *   yield { modelContentBlockStartEvent: { } }
+ *   yield { modelContentBlockDeltaEvent: { delta: { type: 'textDelta', text: 'Hello' }, } }
+ *   yield { modelContentBlockStopEvent: { } }
+ *   yield { modelMessageStopEvent: { stopReason: 'endTurn' } }
  * })
  *
  * const message = await collectAggregated(provider.streamAggregated(messages))
  * ```
  */
 export class TestModelProvider extends Model<BaseModelConfig> {
-  private eventGenerator: (() => AsyncGenerator<ModelStreamEvent>) | undefined
+  private eventGenerator: (() => AsyncGenerator<ModelStreamEventData>) | undefined
   private config: BaseModelConfig = { modelId: 'test-model' }
 
-  constructor(eventGenerator?: () => AsyncGenerator<ModelStreamEvent>) {
+  constructor(eventGenerator?: () => AsyncGenerator<ModelStreamEventData>) {
     super()
     this.eventGenerator = eventGenerator
   }
 
-  setEventGenerator(eventGenerator: () => AsyncGenerator<ModelStreamEvent>): void {
+  setEventGenerator(eventGenerator: () => AsyncGenerator<ModelStreamEventData>): void {
     this.eventGenerator = eventGenerator
   }
 
@@ -48,7 +48,7 @@ export class TestModelProvider extends Model<BaseModelConfig> {
     return this.config
   }
 
-  async *stream(_messages: Message[], _options?: StreamOptions): AsyncGenerator<ModelStreamEvent> {
+  async *stream(_messages: Message[], _options?: StreamOptions): AsyncGenerator<ModelStreamEventData> {
     if (!this.eventGenerator) {
       throw new Error('Event generator not set')
     }

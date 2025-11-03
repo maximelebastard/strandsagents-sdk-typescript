@@ -328,8 +328,8 @@ describe('BedrockModel', () => {
               toolUseId: 'tool-123',
               status: 'success',
               content: [
-                { type: 'toolResultTextContent', text: 'Result: 8' },
-                { type: 'toolResultJsonContent', json: { hello: 'world' } },
+                { type: 'textBlock', text: 'Result: 8' },
+                { type: 'jsonBlock', json: { hello: 'world' } },
               ],
             },
           ],
@@ -544,9 +544,9 @@ describe('BedrockModel', () => {
         { type: 'message', role: 'user', content: [{ type: 'textBlock', text: 'Weather?' }] },
       ]
       const events = await collectIterator(provider.stream(messages))
-      const startEvent = events.find((e) => e.type === 'modelContentBlockStartEvent')
+      const startEvent = events.find((e) => 'modelContentBlockStartEvent' in e)
       const inputDeltaEvent = events.find(
-        (e) => e.type === 'modelContentBlockDeltaEvent' && e.delta.type === 'toolUseInputDelta'
+        (e) => 'modelContentBlockDeltaEvent' in e && e.modelContentBlockDeltaEvent.delta.type === 'toolUseInputDelta'
       )
 
       expect(events).toContainEqual({ role: 'assistant', type: 'modelMessageStartEvent' })
@@ -802,15 +802,17 @@ describe('BedrockModel', () => {
       const events = await collectIterator(provider.stream(messages))
 
       const reasoningDelta = events.find(
-        (e) => e.type === 'modelContentBlockDeltaEvent' && e.delta.type === 'reasoningContentDelta'
+        (e) => 'modelContentBlockDeltaEvent' in e && e.modelContentBlockDeltaEvent.delta.type === 'reasoningContentDelta'
       )
       expect(reasoningDelta).toBeDefined()
       if (
-        reasoningDelta?.type === 'modelContentBlockDeltaEvent' &&
-        reasoningDelta.delta.type === 'reasoningContentDelta'
+        'modelContentBlockDeltaEvent' in reasoningDelta! &&
+        reasoningDelta.modelContentBlockDeltaEvent.delta.type === 'reasoningContentDelta'
       ) {
-        expect(reasoningDelta.delta.text).toBe('thinking...')
-        expect(reasoningDelta.delta.signature).toBeUndefined()
+        expect(reasoningDelta.modelContentBlockDeltaEvent.delta.text).toBe('thinking...')
+        expect(reasoningDelta.modelContentBlockDeltaEvent.delta.signature).toBeUndefined()
+      } else {
+        throw Error("Should fail here")
       }
     })
 
@@ -834,15 +836,15 @@ describe('BedrockModel', () => {
       const events = await collectIterator(provider.stream(messages))
 
       const reasoningDelta = events.find(
-        (e) => e.type === 'modelContentBlockDeltaEvent' && e.delta.type === 'reasoningContentDelta'
+        (e) => 'modelContentBlockDeltaEvent' in e && e.modelContentBlockDeltaEvent.delta.type === 'reasoningContentDelta'
       )
       expect(reasoningDelta).toBeDefined()
       if (
-        reasoningDelta?.type === 'modelContentBlockDeltaEvent' &&
-        reasoningDelta.delta.type === 'reasoningContentDelta'
+        'modelContentBlockDeltaEvent' in reasoningDelta! &&
+        reasoningDelta.modelContentBlockDeltaEvent.delta.type === 'reasoningContentDelta'
       ) {
-        expect(reasoningDelta.delta.text).toBeUndefined()
-        expect(reasoningDelta.delta.signature).toBe('sig123')
+        expect(reasoningDelta.modelContentBlockDeltaEvent.delta.text).toBeUndefined()
+        expect(reasoningDelta.modelContentBlockDeltaEvent.delta.signature).toBe('sig123')
       }
     })
 
@@ -871,11 +873,11 @@ describe('BedrockModel', () => {
 
       const events = await collectIterator(provider.stream(messages))
 
-      const metadataEvent = events.find((e) => e.type === 'modelMetadataEvent')
+      const metadataEvent = events.find((e) => 'modelMetadataEvent' in e)
       expect(metadataEvent).toBeDefined()
-      if (metadataEvent?.type === 'modelMetadataEvent') {
-        expect(metadataEvent.usage?.cacheReadInputTokens).toBe(80)
-        expect(metadataEvent.usage?.cacheWriteInputTokens).toBe(20)
+      if ('modelMetadataEvent' in metadataEvent!) {
+        expect(metadataEvent.modelMetadataEvent.usage?.cacheReadInputTokens).toBe(80)
+        expect(metadataEvent.modelMetadataEvent.usage?.cacheWriteInputTokens).toBe(20)
       }
     })
 
@@ -899,10 +901,10 @@ describe('BedrockModel', () => {
 
       const events = await collectIterator(provider.stream(messages))
 
-      const metadataEvent = events.find((e) => e.type === 'modelMetadataEvent')
+      const metadataEvent = events.find((e) => 'modelMetadataEvent' in e)
       expect(metadataEvent).toBeDefined()
-      if (metadataEvent?.type === 'modelMetadataEvent') {
-        expect(metadataEvent.trace).toBeDefined()
+      if ('modelMetadataEvent' in metadataEvent!) {
+        expect(metadataEvent.modelMetadataEvent.trace).toBeDefined()
       }
     })
 
@@ -921,10 +923,10 @@ describe('BedrockModel', () => {
 
       const events = await collectIterator(provider.stream(messages))
 
-      const stopEvent = events.find((e) => e.type === 'modelMessageStopEvent')
+      const stopEvent = events.find((e) => 'modelMessageStopEvent' in e)
       expect(stopEvent).toBeDefined()
-      if (stopEvent?.type === 'modelMessageStopEvent') {
-        expect(stopEvent.additionalModelResponseFields).toStrictEqual({ customField: 'value' })
+      if ('modelMessageStopEvent' in stopEvent!) {
+        expect(stopEvent.modelMessageStopEvent.additionalModelResponseFields).toStrictEqual({ customField: 'value' })
       }
     })
 
@@ -957,10 +959,10 @@ describe('BedrockModel', () => {
             events.push(event)
           }
 
-          const stopEvent = events.find((e) => e.type === 'modelMessageStopEvent')
+          const stopEvent = events.find((e) => 'modelMessageStopEvent' in e)
           expect(stopEvent).toBeDefined()
-          if (stopEvent?.type === 'modelMessageStopEvent') {
-            expect(stopEvent.stopReason).toBe(expectedReason)
+          if ('modelMessageStopEvent' in stopEvent!) {
+            expect(stopEvent.modelMessageStopEvent.stopReason).toBe(expectedReason)
           }
         })
       }
@@ -1120,7 +1122,7 @@ describe('BedrockModel', () => {
                 type: 'toolResultBlock',
                 toolUseId: 'tool-123',
                 status: 'success',
-                content: [{ type: 'toolResultTextContent', text: 'Result' }],
+                content: [{ type: 'textBlock', text: 'Result' }],
               },
             ],
           },
@@ -1160,7 +1162,7 @@ describe('BedrockModel', () => {
                 type: 'toolResultBlock',
                 toolUseId: 'tool-123',
                 status: 'success',
-                content: [{ type: 'toolResultTextContent', text: 'Result' }],
+                content: [{ type: 'textBlock', text: 'Result' }],
               },
             ],
           },
@@ -1202,7 +1204,7 @@ describe('BedrockModel', () => {
                 type: 'toolResultBlock',
                 toolUseId: 'tool-123',
                 status: 'success',
-                content: [{ type: 'toolResultTextContent', text: 'Result' }],
+                content: [{ type: 'textBlock', text: 'Result' }],
               },
             ],
           },
@@ -1244,7 +1246,7 @@ describe('BedrockModel', () => {
                 type: 'toolResultBlock',
                 toolUseId: 'tool-123',
                 status: 'success',
-                content: [{ type: 'toolResultTextContent', text: 'Result' }],
+                content: [{ type: 'textBlock', text: 'Result' }],
               },
             ],
           },

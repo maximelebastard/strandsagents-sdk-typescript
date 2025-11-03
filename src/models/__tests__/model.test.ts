@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import type { Message } from '../../types/messages.js'
+import { TextBlock, Message } from '../../types/messages.js'
 import { TestModelProvider, collectGenerator } from '../../__fixtures__/model-test-helpers.js'
 
 describe('Model', () => {
@@ -7,35 +7,51 @@ describe('Model', () => {
     describe('when streaming a simple text message', () => {
       it('yields original events plus aggregated content block and returns final message', async () => {
         const provider = new TestModelProvider(async function* () {
-          yield { type: 'modelMessageStartEvent', role: 'assistant' }
-          yield { type: 'modelContentBlockStartEvent' }
           yield {
-            type: 'modelContentBlockDeltaEvent',
-            delta: { type: 'textDelta', text: 'Hello' },
+            modelMessageStartEvent: { role: 'assistant' },
           }
-          yield { type: 'modelContentBlockStopEvent' }
-          yield { type: 'modelMessageStopEvent', stopReason: 'endTurn' }
           yield {
-            type: 'modelMetadataEvent',
-            usage: { inputTokens: 10, outputTokens: 5, totalTokens: 15 },
+            modelContentBlockStartEvent: {
+            },
+          }
+          yield {
+            modelContentBlockDeltaEvent: {
+              delta: { type: 'textDelta', text: 'Hello' },
+            },
+          }
+          yield {
+            modelContentBlockStopEvent: {
+            },
+          }
+          yield {
+            modelMessageStopEvent: { stopReason: 'endTurn' },
+          }
+          yield {
+            modelMetadataEvent: {
+              usage: { inputTokens: 10, outputTokens: 5, totalTokens: 15 },
+            },
           }
         })
 
-        const messages: Message[] = [{ type: 'message', role: 'user', content: [{ type: 'textBlock', text: 'Hi' }] }]
+        const messages: Message[] = [new Message({ role: 'user', content: [new TextBlock({ text: 'Hi' })] })]
 
         const { items, result } = await collectGenerator(provider.streamAggregated(messages))
 
         // Verify all yielded items (events + aggregated content block)
         expect(items).toEqual([
-          { type: 'modelMessageStartEvent', role: 'assistant' },
-          { type: 'modelContentBlockStartEvent' },
-          {
+          expect.objectContaining({ type: 'modelMessageStartEvent', role: 'assistant' }),
+          expect.objectContaining({
+            type: 'modelContentBlockStartEvent',
+          }),
+          expect.objectContaining({
             type: 'modelContentBlockDeltaEvent',
             delta: { type: 'textDelta', text: 'Hello' },
-          },
-          { type: 'modelContentBlockStopEvent' },
-          { type: 'textBlock', text: 'Hello' },
-          { type: 'modelMessageStopEvent', stopReason: 'endTurn' },
+          }),
+          expect.objectContaining({
+            type: 'modelContentBlockStopEvent',
+          }),
+          expect.objectContaining({ type: 'textBlock', text: 'Hello' }),
+          expect.objectContaining({ type: 'modelMessageStopEvent', stopReason: 'endTurn' }),
         ])
 
         // Verify the returned result
@@ -53,32 +69,51 @@ describe('Model', () => {
     describe('when streaming multiple text blocks', () => {
       it('yields all blocks in order', async () => {
         const provider = new TestModelProvider(async function* () {
-          yield { type: 'modelMessageStartEvent', role: 'assistant' }
-          yield { type: 'modelContentBlockStartEvent' }
           yield {
-            type: 'modelContentBlockDeltaEvent',
-            delta: { type: 'textDelta', text: 'First' },
+            modelMessageStartEvent: { role: 'assistant' },
           }
-          yield { type: 'modelContentBlockStopEvent' }
-          yield { type: 'modelContentBlockStartEvent' }
           yield {
-            type: 'modelContentBlockDeltaEvent',
-            delta: { type: 'textDelta', text: 'Second' },
+            modelContentBlockStartEvent: {
+            },
           }
-          yield { type: 'modelContentBlockStopEvent' }
-          yield { type: 'modelMessageStopEvent', stopReason: 'endTurn' }
           yield {
-            type: 'modelMetadataEvent',
-            usage: { inputTokens: 10, outputTokens: 10, totalTokens: 20 },
+            modelContentBlockDeltaEvent: {
+              delta: { type: 'textDelta', text: 'First' },
+            },
+          }
+          yield {
+            modelContentBlockStopEvent: {
+            },
+          }
+          yield {
+            modelContentBlockStartEvent: {
+            },
+          }
+          yield {
+            modelContentBlockDeltaEvent: {
+              delta: { type: 'textDelta', text: 'Second' },
+            },
+          }
+          yield {
+            modelContentBlockStopEvent: {
+            },
+          }
+          yield {
+            modelMessageStopEvent: { stopReason: 'endTurn' },
+          }
+          yield {
+            modelMetadataEvent: {
+              usage: { inputTokens: 10, outputTokens: 10, totalTokens: 20 },
+            },
           }
         })
 
-        const messages: Message[] = [{ type: 'message', role: 'user', content: [{ type: 'textBlock', text: 'Hi' }] }]
+        const messages: Message[] = [new Message({ role: 'user', content: [new TextBlock({ text: 'Hi' })] })]
 
         const { items, result } = await collectGenerator(provider.streamAggregated(messages))
 
-        expect(items).toContainEqual({ type: 'textBlock', text: 'First' })
-        expect(items).toContainEqual({ type: 'textBlock', text: 'Second' })
+        expect(items).toContainEqual({ textBlock: expect.objectContaining({ type: 'textBlock', text: 'First' }) })
+        expect(items).toContainEqual({ textBlock: expect.objectContaining({ type: 'textBlock', text: 'Second' }) })
 
         expect(result).toEqual({
           message: {
@@ -97,36 +132,49 @@ describe('Model', () => {
     describe('when streaming tool use', () => {
       it('yields complete tool use block', async () => {
         const provider = new TestModelProvider(async function* () {
-          yield { type: 'modelMessageStartEvent', role: 'assistant' }
           yield {
-            type: 'modelContentBlockStartEvent',
-            start: { type: 'toolUseStart', toolUseId: 'tool1', name: 'get_weather' },
+            modelMessageStartEvent: { role: 'assistant' },
           }
           yield {
-            type: 'modelContentBlockDeltaEvent',
-            delta: { type: 'toolUseInputDelta', input: '{"location"' },
+            modelContentBlockStartEvent: {
+              start: { type: 'toolUseStart', toolUseId: 'tool1', name: 'get_weather' },
+            },
           }
           yield {
-            type: 'modelContentBlockDeltaEvent',
-            delta: { type: 'toolUseInputDelta', input: ': "Paris"}' },
+            modelContentBlockDeltaEvent: {
+              delta: { type: 'toolUseInputDelta', input: '{"location"' },
+            },
           }
-          yield { type: 'modelContentBlockStopEvent' }
-          yield { type: 'modelMessageStopEvent', stopReason: 'toolUse' }
           yield {
-            type: 'modelMetadataEvent',
-            usage: { inputTokens: 10, outputTokens: 8, totalTokens: 18 },
+            modelContentBlockDeltaEvent: {
+              delta: { type: 'toolUseInputDelta', input: ': "Paris"}' },
+            },
+          }
+          yield {
+            modelContentBlockStopEvent: {
+            },
+          }
+          yield {
+            modelMessageStopEvent: { stopReason: 'toolUse' },
+          }
+          yield {
+            modelMetadataEvent: {
+              usage: { inputTokens: 10, outputTokens: 8, totalTokens: 18 },
+            },
           }
         })
 
-        const messages: Message[] = [{ type: 'message', role: 'user', content: [{ type: 'textBlock', text: 'Hi' }] }]
+        const messages: Message[] = [new Message({ role: 'user', content: [new TextBlock({ text: 'Hi' })] })]
 
         const { items, result } = await collectGenerator(provider.streamAggregated(messages))
 
         expect(items).toContainEqual({
-          type: 'toolUseBlock',
-          toolUseId: 'tool1',
-          name: 'get_weather',
-          input: { location: 'Paris' },
+          toolUseBlock: expect.objectContaining({
+            type: 'toolUseBlock',
+            toolUseId: 'tool1',
+            name: 'get_weather',
+            input: { location: 'Paris' },
+          }),
         })
 
         expect(result).toEqual({
@@ -150,32 +198,47 @@ describe('Model', () => {
     describe('when streaming reasoning content', () => {
       it('yields complete reasoning block', async () => {
         const provider = new TestModelProvider(async function* () {
-          yield { type: 'modelMessageStartEvent', role: 'assistant' }
-          yield { type: 'modelContentBlockStartEvent' }
           yield {
-            type: 'modelContentBlockDeltaEvent',
-            delta: { type: 'reasoningContentDelta', text: 'Thinking about', signature: 'sig1' },
+            modelMessageStartEvent: { role: 'assistant' },
           }
           yield {
-            type: 'modelContentBlockDeltaEvent',
-            delta: { type: 'reasoningContentDelta', text: ' the problem' },
+            modelContentBlockStartEvent: {
+            },
           }
-          yield { type: 'modelContentBlockStopEvent' }
-          yield { type: 'modelMessageStopEvent', stopReason: 'endTurn' }
           yield {
-            type: 'modelMetadataEvent',
-            usage: { inputTokens: 10, outputTokens: 10, totalTokens: 20 },
+            modelContentBlockDeltaEvent: {
+              delta: { type: 'reasoningContentDelta', text: 'Thinking about', signature: 'sig1' },
+            },
+          }
+          yield {
+            modelContentBlockDeltaEvent: {
+              delta: { type: 'reasoningContentDelta', text: ' the problem' },
+            },
+          }
+          yield {
+            modelContentBlockStopEvent: {
+            },
+          }
+          yield {
+            modelMessageStopEvent: { stopReason: 'endTurn' },
+          }
+          yield {
+            modelMetadataEvent: {
+              usage: { inputTokens: 10, outputTokens: 10, totalTokens: 20 },
+            },
           }
         })
 
-        const messages: Message[] = [{ type: 'message', role: 'user', content: [{ type: 'textBlock', text: 'Hi' }] }]
+        const messages: Message[] = [new Message({ role: 'user', content: [new TextBlock({ text: 'Hi' })] })]
 
         const { items, result } = await collectGenerator(provider.streamAggregated(messages))
 
         expect(items).toContainEqual({
-          type: 'reasoningBlock',
-          text: 'Thinking about the problem',
-          signature: 'sig1',
+          reasoningBlock: expect.objectContaining({
+            type: 'reasoningBlock',
+            text: 'Thinking about the problem',
+            signature: 'sig1',
+          }),
         })
 
         expect(result).toEqual({
@@ -196,27 +259,41 @@ describe('Model', () => {
 
       it('yields redacted content reasoning block', async () => {
         const provider = new TestModelProvider(async function* () {
-          yield { type: 'modelMessageStartEvent', role: 'assistant' }
-          yield { type: 'modelContentBlockStartEvent' }
           yield {
-            type: 'modelContentBlockDeltaEvent',
-            delta: { type: 'reasoningContentDelta', redactedContent: new Uint8Array(0) },
+            modelMessageStartEvent: { role: 'assistant' },
           }
-          yield { type: 'modelContentBlockStopEvent' }
-          yield { type: 'modelMessageStopEvent', stopReason: 'endTurn' }
           yield {
-            type: 'modelMetadataEvent',
-            usage: { inputTokens: 10, outputTokens: 5, totalTokens: 15 },
+            modelContentBlockStartEvent: {
+            },
+          }
+          yield {
+            modelContentBlockDeltaEvent: {
+              delta: { type: 'reasoningContentDelta', redactedContent: new Uint8Array(0) },
+            },
+          }
+          yield {
+            modelContentBlockStopEvent: {
+            },
+          }
+          yield {
+            modelMessageStopEvent: { stopReason: 'endTurn' },
+          }
+          yield {
+            modelMetadataEvent: {
+              usage: { inputTokens: 10, outputTokens: 5, totalTokens: 15 },
+            },
           }
         })
 
-        const messages: Message[] = [{ type: 'message', role: 'user', content: [{ type: 'textBlock', text: 'Hi' }] }]
+        const messages: Message[] = [new Message({ role: 'user', content: [new TextBlock({ text: 'Hi' })] })]
 
         const { items, result } = await collectGenerator(provider.streamAggregated(messages))
 
         expect(items).toContainEqual({
-          type: 'reasoningBlock',
-          redactedContent: new Uint8Array(0),
+          reasoningBlock: expect.objectContaining({
+            type: 'reasoningBlock',
+            redactedContent: new Uint8Array(0),
+          }),
         })
 
         expect(result).toEqual({
@@ -236,27 +313,41 @@ describe('Model', () => {
 
       it('omits signature if not present', async () => {
         const provider = new TestModelProvider(async function* () {
-          yield { type: 'modelMessageStartEvent', role: 'assistant' }
-          yield { type: 'modelContentBlockStartEvent' }
           yield {
-            type: 'modelContentBlockDeltaEvent',
-            delta: { type: 'reasoningContentDelta', text: 'Thinking' },
+            modelMessageStartEvent: { role: 'assistant' },
           }
-          yield { type: 'modelContentBlockStopEvent' }
-          yield { type: 'modelMessageStopEvent', stopReason: 'endTurn' }
           yield {
-            type: 'modelMetadataEvent',
-            usage: { inputTokens: 10, outputTokens: 5, totalTokens: 15 },
+            modelContentBlockStartEvent: {
+            },
+          }
+          yield {
+            modelContentBlockDeltaEvent: {
+              delta: { type: 'reasoningContentDelta', text: 'Thinking' },
+            },
+          }
+          yield {
+            modelContentBlockStopEvent: {
+            },
+          }
+          yield {
+            modelMessageStopEvent: { stopReason: 'endTurn' },
+          }
+          yield {
+            modelMetadataEvent: {
+              usage: { inputTokens: 10, outputTokens: 5, totalTokens: 15 },
+            },
           }
         })
 
-        const messages: Message[] = [{ type: 'message', role: 'user', content: [{ type: 'textBlock', text: 'Hi' }] }]
+        const messages: Message[] = [new Message({ role: 'user', content: [new TextBlock({ text: 'Hi' })] })]
 
         const { items, result } = await collectGenerator(provider.streamAggregated(messages))
 
         expect(items).toContainEqual({
-          type: 'reasoningBlock',
-          text: 'Thinking',
+          reasoningBlock: expect.objectContaining({
+            type: 'reasoningBlock',
+            text: 'Thinking',
+          }),
         })
 
         expect(result).toEqual({
@@ -278,47 +369,75 @@ describe('Model', () => {
     describe('when streaming mixed content blocks', () => {
       it('yields all blocks in correct order', async () => {
         const provider = new TestModelProvider(async function* () {
-          yield { type: 'modelMessageStartEvent', role: 'assistant' }
-          yield { type: 'modelContentBlockStartEvent' }
           yield {
-            type: 'modelContentBlockDeltaEvent',
-            delta: { type: 'textDelta', text: 'Hello' },
-          }
-          yield { type: 'modelContentBlockStopEvent' }
-          yield {
-            type: 'modelContentBlockStartEvent',
-            start: { type: 'toolUseStart', toolUseId: 'tool1', name: 'get_weather' },
+            modelMessageStartEvent: { role: 'assistant' },
           }
           yield {
-            type: 'modelContentBlockDeltaEvent',
-            delta: { type: 'toolUseInputDelta', input: '{"city": "Paris"}' },
+            modelContentBlockStartEvent: {
+            },
           }
-          yield { type: 'modelContentBlockStopEvent' }
-          yield { type: 'modelContentBlockStartEvent' }
           yield {
-            type: 'modelContentBlockDeltaEvent',
-            delta: { type: 'reasoningContentDelta', text: 'Reasoning', signature: 'sig1' },
+            modelContentBlockDeltaEvent: {
+              delta: { type: 'textDelta', text: 'Hello' },
+            },
           }
-          yield { type: 'modelContentBlockStopEvent' }
-          yield { type: 'modelMessageStopEvent', stopReason: 'endTurn' }
           yield {
-            type: 'modelMetadataEvent',
-            usage: { inputTokens: 10, outputTokens: 15, totalTokens: 25 },
+            modelContentBlockStopEvent: {
+            },
+          }
+          yield {
+            modelContentBlockStartEvent: {
+              start: { type: 'toolUseStart', toolUseId: 'tool1', name: 'get_weather' },
+            },
+          }
+          yield {
+            modelContentBlockDeltaEvent: {
+              delta: { type: 'toolUseInputDelta', input: '{"city": "Paris"}' },
+            },
+          }
+          yield {
+            modelContentBlockStopEvent: {
+            },
+          }
+          yield {
+            modelContentBlockStartEvent: {
+            },
+          }
+          yield {
+            modelContentBlockDeltaEvent: {
+              delta: { type: 'reasoningContentDelta', text: 'Reasoning', signature: 'sig1' },
+            },
+          }
+          yield {
+            modelContentBlockStopEvent: {
+            },
+          }
+          yield {
+            modelMessageStopEvent: { stopReason: 'endTurn' },
+          }
+          yield {
+            modelMetadataEvent: {
+              usage: { inputTokens: 10, outputTokens: 15, totalTokens: 25 },
+            },
           }
         })
 
-        const messages: Message[] = [{ type: 'message', role: 'user', content: [{ type: 'textBlock', text: 'Hi' }] }]
+        const messages: Message[] = [new Message({ role: 'user', content: [new TextBlock({ text: 'Hi' })]})]
 
         const { items, result } = await collectGenerator(provider.streamAggregated(messages))
 
-        expect(items).toContainEqual({ type: 'textBlock', text: 'Hello' })
+        expect(items).toContainEqual({ textBlock: expect.objectContaining({ type: 'textBlock', text: 'Hello' }) })
         expect(items).toContainEqual({
-          type: 'toolUseBlock',
-          toolUseId: 'tool1',
-          name: 'get_weather',
-          input: { city: 'Paris' },
+          toolUseBlock: expect.objectContaining({
+            type: 'toolUseBlock',
+            toolUseId: 'tool1',
+            name: 'get_weather',
+            input: { city: 'Paris' },
+          }),
         })
-        expect(items).toContainEqual({ type: 'reasoningBlock', text: 'Reasoning', signature: 'sig1' })
+        expect(items).toContainEqual({
+          reasoningBlock: expect.objectContaining({ type: 'reasoningBlock', text: 'Reasoning', signature: 'sig1' }),
+        })
 
         expect(result).toEqual({
           message: {

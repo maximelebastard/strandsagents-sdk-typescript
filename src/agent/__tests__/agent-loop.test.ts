@@ -4,22 +4,23 @@ import { TestModelProvider, collectGenerator } from '../../__fixtures__/model-te
 import { MockMessageModel } from '../../__fixtures__/mock-message-model.js'
 import { createMockTool } from '../../__fixtures__/tool-helpers.js'
 import { ToolRegistry } from '../../tools/registry.js'
-import type { Message } from '../../types/messages.js'
+import { TextBlock, type Message } from '../../types/messages.js'
 import { MaxTokensError } from '../../errors.js'
 
 describe('runAgentLoop', () => {
   describe('when handling simple completion without tools', () => {
     it('yields events and returns final messages array', async () => {
       const provider = new TestModelProvider(async function* () {
-        yield { type: 'modelMessageStartEvent', role: 'assistant' }
-        yield { type: 'modelContentBlockStartEvent', contentBlockIndex: 0 }
+        yield { modelMessageStartEvent: { role: 'assistant' } }
+        yield { modelContentBlockStartEvent: { contentBlockIndex: 0 } }
         yield {
-          type: 'modelContentBlockDeltaEvent',
-          delta: { type: 'textDelta', text: 'Hello, how can I help?' },
-          contentBlockIndex: 0,
+          modelContentBlockDeltaEvent: {
+            delta: { type: 'textDelta', text: 'Hello, how can I help?' },
+            contentBlockIndex: 0,
+          },
         }
-        yield { type: 'modelContentBlockStopEvent', contentBlockIndex: 0 }
-        yield { type: 'modelMessageStopEvent', stopReason: 'endTurn' }
+        yield { modelContentBlockStopEvent: { contentBlockIndex: 0 } }
+        yield { modelMessageStopEvent: { stopReason: 'endTurn' } }
       })
 
       const registry = new ToolRegistry()
@@ -44,7 +45,7 @@ describe('runAgentLoop', () => {
       expect(items).toContainEqual({ type: 'afterInvocationEvent' })
 
       // Verify model events are passed through
-      expect(items).toContainEqual({ type: 'modelMessageStartEvent', role: 'assistant' })
+      expect(items).toContainEqual({ modelMessageStartEvent: { role: 'assistant' } })
 
       // Verify final messages array contains assistant response
       expect(messages).toHaveLength(2)
@@ -70,7 +71,7 @@ describe('runAgentLoop', () => {
       const mockTool = createMockTool('calculator', () => ({
         toolUseId: 'tool-1',
         status: 'success',
-        content: [{ type: 'toolResultTextContent', text: '8' }],
+        content: [new TextBlock({ text: '8' })],
       }))
 
       const registry = new ToolRegistry()
@@ -97,7 +98,7 @@ describe('runAgentLoop', () => {
       })
 
       // Verify only one beforeInvocationEvent
-      const beforeEvents = items.filter((e) => e.type === 'beforeInvocationEvent')
+      const beforeEvents = items.filter((e) => e.type !== 'beforeInvocationEvent')
       expect(beforeEvents).toHaveLength(1)
 
       // Verify two iterations using callCount
@@ -146,13 +147,13 @@ describe('runAgentLoop', () => {
       const tool1 = createMockTool('tool1', () => ({
         toolUseId: 'id-1',
         status: 'success',
-        content: [{ type: 'toolResultTextContent', text: 'result1' }],
+        content: [{ type: 'textBlock', text: 'result1' }],
       }))
 
       const tool2 = createMockTool('tool2', () => ({
         toolUseId: 'id-2',
         status: 'success',
-        content: [{ type: 'toolResultTextContent', text: 'result2' }],
+        content: [{ type: 'textBlock', text: 'result2' }],
       }))
 
       const registry = new ToolRegistry()
@@ -205,13 +206,13 @@ describe('runAgentLoop', () => {
       const tool1 = createMockTool('tool1', () => ({
         toolUseId: 'id-1',
         status: 'success',
-        content: [{ type: 'toolResultTextContent', text: 'r1' }],
+        content: [{ type: 'textBlock', text: 'r1' }],
       }))
 
       const tool2 = createMockTool('tool2', () => ({
         toolUseId: 'id-2',
         status: 'success',
-        content: [{ type: 'toolResultTextContent', text: 'r2' }],
+        content: [{ type: 'textBlock', text: 'r2' }],
       }))
 
       const registry = new ToolRegistry()
@@ -228,7 +229,7 @@ describe('runAgentLoop', () => {
       const { items } = await collectGenerator(runAgentLoop({ model: provider, messages, toolRegistry: registry }))
 
       // Verify only one beforeInvocationEvent
-      const beforeEvents = items.filter((e) => e.type === 'beforeInvocationEvent')
+      const beforeEvents = items.filter((e) => (e as any).type === 'beforeInvocationEvent')
       expect(beforeEvents).toHaveLength(1)
 
       // Verify three iterations using callCount
@@ -288,7 +289,7 @@ describe('runAgentLoop', () => {
       // For error after first event, we need to use TestModelProvider since TestMessageModelProvider
       // throws errors before any events are generated
       const provider = new TestModelProvider(async function* () {
-        yield { type: 'modelMessageStartEvent', role: 'assistant' }
+        yield { modelMessageStartEvent:{ role: 'assistant' }}
         throw new Error('Error after first event')
       })
 
@@ -477,7 +478,7 @@ describe('runAgentLoop', () => {
       const tool = createMockTool('test', () => ({
         toolUseId: 'id-1',
         status: 'success',
-        content: [{ type: 'toolResultTextContent', text: 'ok' }],
+        content: [{ type: 'textBlock', text: 'ok' }],
       }))
 
       const registry = new ToolRegistry()

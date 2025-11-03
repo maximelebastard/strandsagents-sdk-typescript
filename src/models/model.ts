@@ -1,6 +1,24 @@
-import type { Message, ContentBlock, Role, SystemPrompt } from '../types/messages.js'
+import {
+  type Message,
+  type ContentBlock,
+  type Role,
+  type SystemPrompt,
+  Message as MessageClass,
+  TextBlock,
+  ToolUseBlock,
+  ReasoningBlock,
+} from '../types/messages.js'
 import type { ToolSpec, ToolChoice } from '../tools/types.js'
-import type { ModelStreamEvent } from './streaming.js'
+import {
+  ModelContentBlockDeltaEvent,
+  ModelContentBlockStartEvent,
+  ModelContentBlockStopEvent,
+  ModelMessageStartEvent,
+  ModelMessageStopEvent,
+  ModelMetadataEvent,
+  type ModelStreamEvent,
+  type ModelStreamEventData,
+} from './streaming.js'
 
 /**
  * Base configuration interface for all model providers.
@@ -71,7 +89,31 @@ export abstract class Model<T extends BaseModelConfig> {
    * @param options - Optional streaming configuration
    * @returns Async iterable of streaming events
    */
-  abstract stream(messages: Message[], options?: StreamOptions): AsyncIterable<ModelStreamEvent>
+  abstract stream(messages: Message[], options?: StreamOptions): AsyncIterable<ModelStreamEventData>
+
+  /**
+   * Converts event data to event class representation
+   *
+   * @param event_data - Interface representation of event
+   * @returns Class representation of event
+   */
+  private _convert_to_class_event(event_data: ModelStreamEventData): ModelStreamEvent {
+    if ('modelMessageStartEvent' in event_data) {
+      return new ModelMessageStartEvent(event_data.modelMessageStartEvent)
+    } else if ('modelContentBlockStartEvent' in event_data) {
+      return new ModelContentBlockStartEvent(event_data.modelContentBlockStartEvent)
+    } else if ('modelContentBlockDeltaEvent' in event_data) {
+      return new ModelContentBlockDeltaEvent()
+    } else if ('modelContentBlockStopEvent' in event_data) {
+      return new ModelContentBlockStopEvent(event_data.modelContentBlockStopEvent)
+    } else if ('modelMessageStopEvent' in event_data) {
+      return new ModelMessageStopEvent(event_data.modelMessageStopEvent)
+    } else if ('modelMetadataEvent' in event_data) {
+      return new ModelMetadataEvent(event_data.modelMetadataEvent)
+    } else {
+      throw new Error(`Unsupported event type: ${event_data}`)
+    }
+  }
 
   /**
    * Streams a conversation with aggregated content blocks and messages.
@@ -95,7 +137,7 @@ export abstract class Model<T extends BaseModelConfig> {
   async *streamAggregated(
     messages: Message[],
     options?: StreamOptions
-  ): AsyncGenerator<ModelStreamEvent | ContentBlock, { message: Message; stopReason: string }, never> {
+  ): AsyncGenerator<ModelStreamEvent | ContentBlock, { message: MessageClass; stopReason: string }, never> {
     // State maintained in closure
     let messageRole: Role | null = null
     const contentBlocks: ContentBlock[] = []
@@ -109,84 +151,77 @@ export abstract class Model<T extends BaseModelConfig> {
       redactedContent?: Uint8Array
     } = {}
 
-    for await (const event of this.stream(messages, options)) {
-      yield event // Pass through immediately
+    for await (const event_data of this.stream(messages, options)) {
+      const event = this._convert_to_class_event(event_data)
+      if (event !== undefined) {
+        yield event // Pass through immediately
 
-      // Aggregation logic based on event type
-      switch (event.type) {
-        case 'modelMessageStartEvent':
-          messageRole = event.role
-          contentBlocks.length = 0 // Reset
-          break
-
-        case 'modelContentBlockStartEvent':
-          if (event.start?.type === 'toolUseStart') {
-            toolName = event.start.name
-            toolUseId = event.start.toolUseId
-          }
-          accumulatedToolInput = ''
-          accumulatedText = ''
-          accumulatedReasoning = {}
-          break
-
-        case 'modelContentBlockDeltaEvent':
-          switch (event.delta.type) {
-            case 'textDelta':
-              accumulatedText += event.delta.text
-              break
-            case 'toolUseInputDelta':
-              accumulatedToolInput += event.delta.input
-              break
-            case 'reasoningContentDelta':
-              if (event.delta.text) accumulatedReasoning.text = (accumulatedReasoning.text ?? '') + event.delta.text
-              if (event.delta.signature) accumulatedReasoning.signature = event.delta.signature
-              if (event.delta.redactedContent) accumulatedReasoning.redactedContent = event.delta.redactedContent
-              break
-          }
-          break
-
-        case 'modelContentBlockStopEvent': {
-          // Finalize and emit complete ContentBlock
-          let block: ContentBlock
-          if (toolUseId) {
-            block = {
-              type: 'toolUseBlock',
-              name: toolName,
-              toolUseId: toolUseId,
-              input: JSON.parse(accumulatedToolInput),
+        // Aggregation logic based on event type
+        const type = event.type
+        switch (type) {
+          case 'modelMessageStartEvent':
+            messageRole = event.role
+            contentBlocks.length = 0 // Reset
+            break
+          case 'modelContentBlockStartEvent':
+            if (event.start?.type === 'toolUseStart') {
+              toolName = event.start.name
+              toolUseId = event.start.toolUseId
             }
-            toolUseId = '' // Reset
-            toolName = ''
-          } else if (Object.keys(accumulatedReasoning).length > 0) {
-            block = {
-              type: 'reasoningBlock',
-              ...accumulatedReasoning,
+            accumulatedToolInput = ''
+            accumulatedText = ''
+            accumulatedReasoning = {}
+            break
+          case 'modelContentBlockDeltaEvent':
+            switch (event.delta.type) {
+              case 'textDelta':
+                accumulatedText += event.delta.text
+                break
+              case 'toolUseInputDelta':
+                accumulatedToolInput += event.delta.input
+                break
+              case 'reasoningContentDelta':
+                if (event.delta.text) accumulatedReasoning.text = (accumulatedReasoning.text ?? '') + event.delta.text
+                if (event.delta.signature) accumulatedReasoning.signature = event.delta.signature
+                if (event.delta.redactedContent) accumulatedReasoning.redactedContent = event.delta.redactedContent
+                break
             }
-          } else {
-            block = {
-              type: 'textBlock',
-              text: accumulatedText,
+            break
+          case 'modelContentBlockStopEvent': {
+            // Finalize and emit complete ContentBlock
+            let block: ContentBlock
+            if (toolUseId) {
+              block = new ToolUseBlock({
+                name: toolName,
+                toolUseId: toolUseId,
+                input: JSON.parse(accumulatedToolInput),
+              })
+
+              toolUseId = '' // Reset
+              toolName = ''
+            } else if (Object.keys(accumulatedReasoning).length > 0) {
+              block = new ReasoningBlock(accumulatedReasoning)
+            } else {
+              block = new TextBlock({ text: accumulatedText })
             }
+            contentBlocks.push(block)
+            yield block
+            break
           }
-          contentBlocks.push(block)
-          yield block
-          break
+          case 'modelMessageStopEvent':
+            // Complete message - will be returned at the end
+            if (messageRole) {
+              const message = new MessageClass({
+                role: messageRole,
+                content: [...contentBlocks],
+              })
+              return { message, stopReason: event.stopReason }
+            }
+            break
+          case 'modelMetadataEvent':
+            // TODO: Add metadata metrics support: https://github.com/strands-agents/sdk-typescript/issues/70
+            break
         }
-
-        case 'modelMessageStopEvent':
-          // Complete message and return with stop reason
-          if (messageRole) {
-            const message: Message = {
-              type: 'message',
-              role: messageRole,
-              content: [...contentBlocks],
-            }
-            return { message, stopReason: event.stopReason! }
-          }
-          break
-
-        default:
-          break
       }
     }
 
