@@ -9,8 +9,92 @@ This document provides guidance specifically for AI agents working on the Strand
 - Development workflow instructions for agents to follow when developing features
 - Coding patterns and testing patterns to follow when writing code
 - Style guidelines, organizational patterns, and best practices
+- Agent system overview and usage instructions
 
 **For human contributors**: See [CONTRIBUTING.md](CONTRIBUTING.md) for setup, testing, and contribution guidelines.
+
+## Agent System
+
+This repository uses three AI agents to assist with development tasks:
+
+### Task Reviewer (`/strands review`)
+Reviews and clarifies task requirements in GitHub issues. The agent:
+- Analyzes feature requests for ambiguities
+- Researches existing patterns in the codebase
+- Posts clarifying questions as issue comments
+- Updates the issue with comprehensive implementation requirements
+- Invoked on issues with `/strands review` command
+
+### Task Implementer (`/strands implement`)
+Implements tasks defined in GitHub issues using TDD principles. The agent:
+- Follows structured Explore, Plan, Code, Commit workflow
+- Writes tests first, then implementation
+- Creates pull requests for review
+- Iterates on feedback until PR is accepted
+- Invoked on issues with `/strands implement` command
+
+### Code Review Agent (`/strands pr`)
+Reviews pull requests for code quality aspects NOT covered by automated CI. The agent:
+- Assumes CI checks (tests, linting, formatting, type-checking) pass separately
+- Focuses on code quality, architecture, documentation, and adherence to patterns
+- Posts inline comments on specific code issues
+- Provides summary comment with checklist status
+- Gives advisory feedback only (non-blocking)
+- Invoked on pull requests with `/strands pr` or `/strands code-review` command
+
+#### Code Review Checklist
+
+The code review agent verifies PRs against the following checklist:
+
+**1. Architecture & Design Decisions**
+- Follows YAGNI, KISS, and SOLID principles
+- Uses existing patterns from the codebase
+- Makes minimal reasonable changes
+- Avoids over-engineering and over-abstraction
+- Has appropriate error handling
+
+**2. Test Quality (Beyond Coverage %)**
+- Tests are co-located in `__tests__/` directories
+- Uses nested describe pattern consistently
+- Test batching applied appropriately
+- Tests verify entire objects using `toEqual()`
+- Tests have clear, descriptive names
+- Integration tests in `tests_integ/` when appropriate
+- Tests follow RED → GREEN → REFACTOR TDD cycle
+
+**3. Documentation Completeness & Quality**
+- All exported functions have TSDoc comments
+- TSDoc includes `@param`, `@returns`, and `@example` (for exported classes only)
+- Interface properties have single-line descriptions
+- No examples on type definitions or interfaces
+- Key design decisions documented in code comments
+
+**4. Adherence to AGENTS.md Coding Patterns**
+- Private class fields use underscore prefix (`_field`)
+- Explicit return types on all exported functions
+- No `any` types used
+- Proper import organization (external, then internal with relative paths)
+- Interface/type organization: top-level first, then dependencies
+- Discriminated union naming: type value matches interface name (first letter lowercase)
+- Functions ordered from most general to most specific
+- Follows proper file organization pattern
+
+**5. Code Organization & Maintainability**
+- Code is readable and maintainable (primary concern over cleverness)
+- Code duplication is reduced/refactored
+- Matches style and formatting of surrounding code
+- Functions are small and focused (single responsibility)
+- Meaningful variable and function names
+
+**6. TypeScript Feature Usage**
+- Uses TypeScript strict mode features appropriately
+- Leverages type inference where appropriate
+- No unnecessary type assertions
+
+**7. Documentation Updates**
+- AGENTS.md updated if directory structure changed
+- README.md updated if public API changed
+- CONTRIBUTING.md updated if development process changed
 
 ## Directory Structure
 
@@ -58,8 +142,12 @@ sdk-typescript/
 │   ├── workflows/                # CI/CD workflows
 │   │   ├── pr-and-push.yml       # Triggers test/lint on PR and push
 │   │   ├── test-lint.yml         # Unit tests and linting
-│   │   └── integration-test.yml  # Secure integration tests with AWS
+│   │   ├── integration-test.yml  # Secure integration tests with AWS
+│   │   └── strands-command.yml   # Strands agent command handler
 │   └── agent-scripts/            # Agent system prompts and configs
+│       ├── task-reviewer.script.md      # Reviews and clarifies task requirements
+│       ├── task-implementer.script.md   # Implements tasks following TDD
+│       └── code-reviewer.script.md      # Reviews PRs for code quality
 │
 ├── .project/                     # Project management (tasks, tracking)
 │   ├── tasks/                    # Active tasks

@@ -6,6 +6,44 @@ Please read through this document before submitting any issues or pull requests.
 
 > **Note**: For AI agent-specific development patterns and guidelines, see [AGENTS.md](AGENTS.md).
 
+## AI Agent Assistance
+
+This repository uses AI agents to assist with development tasks. You can invoke them by commenting on GitHub issues or pull requests:
+
+### `/strands review` - Task Review Agent
+Use this command on an issue to have an AI agent review and clarify the task requirements:
+- Analyzes the feature request for ambiguities
+- Asks clarifying questions as comments
+- Updates the issue with comprehensive implementation requirements
+- Helps ensure the task is well-defined before implementation begins
+
+**Example**: Comment `/strands review` on any issue to invoke the task reviewer.
+
+### `/strands implement` - Task Implementation Agent
+Use this command on an issue to have an AI agent implement the task:
+- Follows test-driven development (TDD) principles
+- Creates implementation based on task requirements
+- Generates comprehensive tests
+- Creates a pull request for human review
+- Iterates on feedback until PR is ready to merge
+
+**Example**: Comment `/strands implement` on any issue with clear requirements.
+
+### `/strands pr` - Code Review Agent
+Use this command on a pull request to get automated code quality feedback:
+- Reviews code for architecture, design patterns, and maintainability
+- Checks adherence to repository coding standards (see [AGENTS.md](AGENTS.md))
+- Verifies documentation completeness (TSDoc coverage)
+- Posts inline comments on specific code issues
+- Provides summary with checklist of items passed/needing attention
+- **Advisory only** - does not block merging, complements human review
+
+The code review agent focuses on aspects **NOT** covered by automated CI (which handles tests, linting, formatting, and type-checking). Use this to get consistent feedback based on repository patterns before requesting human review.
+
+**Example**: Comment `/strands pr` or `/strands code-review` on any pull request.
+
+**Note**: All agent operations require appropriate repository permissions. The agents provide assistance but do not replace human judgment in code review and merging decisions.
+
 ## Development Tenets
 Our team follows these core principles when designing and implementing features. These tenets help us make consistent decisions, resolve trade-offs, and maintain the quality and coherence of the SDK. When contributing, please consider how your changes align with these principles:
 
