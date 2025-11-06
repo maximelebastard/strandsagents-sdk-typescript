@@ -34,24 +34,47 @@ Strands Agents is a simple yet powerful SDK that takes a model-driven approach t
 
 > **Note**: This SDK is currently under active development. Features are being added incrementally. Check the [project overview](.project/project-overview.md) for the roadmap.
 
-## Feature Overview (Planned)
+## Feature Overview
 
 - **Lightweight & Flexible**: Simple agent loop that works seamlessly in Node.js and browsers
-- **Model Agnostic**: Support for Amazon Bedrock, OpenAI, and custom model providers
-- **Tool System**: Decorator-based tool definition with automatic registry management
+- **Model Agnostic**: Built-in support for Amazon Bedrock, OpenAI, and custom model providers
+- **Tool System**: Flexible tool definition with automatic registry management
+- **Streaming Support**: Real-time event streaming for responsive user experiences
 
-## Quick Start (Coming Soon)
+## Quick Start
 
-Once the SDK is complete, usage will look something like this:
+Get started with Strands Agents in just a few lines of code:
 
 ```typescript
-import { Agent } from '@strands-agents/sdk'
-import { calculator } from '@strands-agents/tools'
+import { Agent, BedrockModel } from '@strands-agents/sdk'
 
-const agent = new Agent({ tools: [calculator] })
-const response = await agent.invoke('What is the square root of 1764?')
-console.log(response)
+// Create an agent with default settings
+const agent = new Agent()
+
+// Invoke the agent and get the result
+for await (const event of agent.invoke('Hello! What can you help me with?')) {
+  if (event.type === 'afterModelEvent') {
+    console.log('Response:', event.message.content)
+  }
+}
 ```
+
+Or use OpenAI as your model provider:
+
+```typescript
+import { Agent, OpenAIModel } from '@strands-agents/sdk'
+
+const agent = new Agent({
+  model: new OpenAIModel()
+})
+
+const stream = agent.invoke('Tell me a joke')
+for await (const event of stream) {
+  console.log('Event:', event.type)
+}
+```
+
+See the [Usage Examples](#usage-examples) section below for more detailed examples, including tool usage and advanced patterns.
 
 ## Installation (Coming Soon)
 
@@ -61,18 +84,10 @@ Once published to npm:
 npm install @strands-agents/sdk
 ```
 
-For browser usage:
+The SDK works in both Node.js and browser environments:
 
 ```typescript
-import { Agent } from '@strands-agents/sdk'
-// Your agent code here
-```
-
-For Node.js usage:
-
-```typescript
-import { Agent } from '@strands-agents/sdk'
-// Your agent code here
+import { Agent, BedrockModel, OpenAIModel } from '@strands-agents/sdk'
 ```
 
 ## Development Status
@@ -80,14 +95,173 @@ import { Agent } from '@strands-agents/sdk'
 This TypeScript SDK is being developed with the following features (see [project overview](.project/project-overview.md) for details):
 
 - ✅ **Project Structure**: TypeScript configuration, testing framework, development infrastructure
-- 🚧 **Model Providers**: Amazon Bedrock, OpenAI, and custom provider support
-- ✅ **Tool System**: Tool execution, registry, and decorator-based definitions
-- 🚧 **Agent Interface**: Core agent class with `invoke` and `stream` methods
-- 🚧 **Event Loop**: Async iterator-based agent loop for orchestration
+- ✅ **Model Providers**: Amazon Bedrock, OpenAI, and custom provider support
+- ✅ **Tool System**: Tool execution, registry, and flexible tool definitions
+- ✅ **Agent Interface**: Core agent class with `invoke` method for orchestration
+- ✅ **Event Loop**: Async iterator-based agent loop with streaming support
 - 🚧 **Conversation Manager**: Context window overflow handling
 - 🚧 **Hooks System**: Lifecycle event extensibility
 - 🚧 **Telemetry**: OpenTelemetry-based observability
 - 🚧 **Metrics**: Usage tracking and reporting
+
+## Usage Examples
+
+### Basic Agent Usage
+
+The simplest way to create an agent with default settings:
+
+```typescript
+import { Agent } from '@strands-agents/sdk'
+
+const agent = new Agent()
+
+// Get the final result without streaming
+const stream = agent.invoke('What is 2 + 2?')
+let result
+for await (const event of stream) {
+  result = event
+}
+// result contains the final AgentResult
+```
+
+### Streaming Events
+
+Monitor the agent's execution in real-time:
+
+```typescript
+import { Agent } from '@strands-agents/sdk'
+
+const agent = new Agent()
+
+for await (const event of agent.invoke('Tell me about TypeScript')) {
+  switch (event.type) {
+    case 'beforeModelEvent':
+      console.log('Calling model...')
+      break
+    case 'afterModelEvent':
+      console.log('Model response:', event.message)
+      break
+    case 'beforeToolsEvent':
+      console.log('Executing tools...')
+      break
+  }
+}
+```
+
+### Using Different Model Providers
+
+#### Amazon Bedrock
+
+```typescript
+import { Agent, BedrockModel } from '@strands-agents/sdk'
+
+const agent = new Agent({
+  model: new BedrockModel()
+})
+
+for await (const event of agent.invoke('Hello!')) {
+  if (event.type === 'afterModelEvent') {
+    console.log(event.message)
+  }
+}
+```
+
+#### OpenAI
+
+```typescript
+import { Agent, OpenAIModel } from '@strands-agents/sdk'
+
+const agent = new Agent({
+  model: new OpenAIModel()
+})
+
+const stream = agent.invoke('Explain quantum computing')
+for await (const event of stream) {
+  console.log(event.type)
+}
+```
+
+### Working with Tools
+
+Extend your agent's capabilities with custom tools:
+
+```typescript
+import { Agent, type Tool, type ToolContext, type ToolResult } from '@strands-agents/sdk'
+
+// Define a simple calculator tool
+class CalculatorTool implements Tool {
+  name = 'calculator'
+  description = 'Performs basic arithmetic operations'
+  
+  toolSpec = {
+    name: this.name,
+    description: this.description,
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        operation: { type: 'string' as const, enum: ['add', 'subtract', 'multiply', 'divide'] },
+        a: { type: 'number' as const },
+        b: { type: 'number' as const }
+      },
+      required: ['operation', 'a', 'b']
+    }
+  }
+  
+  async *stream(context: ToolContext): AsyncGenerator<never, ToolResult, unknown> {
+    const { operation, a, b } = context.toolUse.input as { operation: string; a: number; b: number }
+    
+    let result: number
+    switch (operation) {
+      case 'add': result = a + b; break
+      case 'subtract': result = a - b; break
+      case 'multiply': result = a * b; break
+      case 'divide': result = a / b; break
+      default: throw new Error('Invalid operation')
+    }
+    
+    return {
+      toolUseId: context.toolUse.toolUseId,
+      status: 'success',
+      content: [{ type: 'textBlock', text: `Result: ${result}` }]
+    }
+  }
+}
+
+// Create agent with tools
+const agent = new Agent({
+  tools: [new CalculatorTool()],
+  systemPrompt: 'You are a helpful assistant with access to a calculator.'
+})
+
+// The agent will automatically use tools when needed
+for await (const event of agent.invoke('What is 42 times 17?')) {
+  if (event.type === 'afterToolsEvent') {
+    console.log('Tool results:', event.message)
+  }
+}
+```
+
+### Advanced Configuration
+
+Combine all configuration options:
+
+```typescript
+import { Agent, BedrockModel } from '@strands-agents/sdk'
+
+const agent = new Agent({
+  model: new BedrockModel(),
+  tools: [new CalculatorTool()],
+  messages: [], // Start with empty conversation history
+  systemPrompt: 'You are a helpful assistant that can perform calculations.'
+})
+
+const stream = agent.invoke('Calculate 123 + 456')
+for await (const event of stream) {
+  console.log('Event:', event.type)
+}
+```
+
+For more examples, see the `examples/` directory in this repository.
 
 ## Documentation
 
