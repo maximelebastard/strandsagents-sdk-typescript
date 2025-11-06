@@ -4,6 +4,11 @@ import { isNode } from '../../__fixtures__/environment.js'
 import { BedrockModel } from '../bedrock.js'
 import { ContextWindowOverflowError } from '../../errors.js'
 import type { Message } from '../../types/messages.js'
+import { ImageBlock, VideoBlock } from '../../types/media.js'
+import { DocumentBlock } from '../../types/documents.js'
+import { CitationsContentBlock } from '../../types/citations.js'
+import { GuardContentBlock } from '../../types/guardrails.js'
+import { TextBlock } from '../../types/messages.js'
 import type { StreamOptions } from '../model.js'
 import { collectIterator } from '../../__fixtures__/model-test-helpers.js'
 
@@ -1268,6 +1273,541 @@ describe('BedrockModel', () => {
           ],
           modelId: 'amazon.nova-lite-v1:0',
         })
+      })
+    })
+  })
+
+  describe('extended content block formatting', async () => {
+    const { ConverseStreamCommand } = await import('@aws-sdk/client-bedrock-runtime')
+    const mockConverseStreamCommand = vi.mocked(ConverseStreamCommand)
+
+    describe('image content', () => {
+      it('formats image block with bytes source', async () => {
+        const provider = new BedrockModel({})
+        const imageBytes = new Uint8Array([1, 2, 3, 4])
+
+        collectIterator(
+          provider.stream([
+            {
+              type: 'message',
+              role: 'user',
+              content: [new ImageBlock({ format: 'jpeg', source: { bytes: imageBytes } })],
+            },
+          ])
+        )
+
+        expect(mockConverseStreamCommand).toHaveBeenLastCalledWith(
+          expect.objectContaining({
+            messages: [
+              {
+                role: 'user',
+                content: [
+                  {
+                    image: {
+                      format: 'jpeg',
+                      source: { bytes: imageBytes },
+                    },
+                  },
+                ],
+              },
+            ],
+          })
+        )
+      })
+
+      it('formats image block with s3:// URL source', async () => {
+        const provider = new BedrockModel({})
+
+        collectIterator(
+          provider.stream([
+            {
+              type: 'message',
+              role: 'user',
+              content: [new ImageBlock({ format: 'png', source: { url: 's3://bucket/image.png' } })],
+            },
+          ])
+        )
+
+        expect(mockConverseStreamCommand).toHaveBeenLastCalledWith(
+          expect.objectContaining({
+            messages: [
+              {
+                role: 'user',
+                content: [
+                  {
+                    image: {
+                      format: 'png',
+                      source: { s3Location: { uri: 's3://bucket/image.png' } },
+                    },
+                  },
+                ],
+              },
+            ],
+          })
+        )
+      })
+
+      it('rejects image block with http:// URL', async () => {
+        const provider = new BedrockModel({})
+
+        await expect(async () => {
+          await collectIterator(
+            provider.stream([
+              {
+                type: 'message',
+                role: 'user',
+                content: [new ImageBlock({ format: 'jpeg', source: { url: 'https://example.com/image.jpg' } })],
+              },
+            ])
+          )
+        }).rejects.toThrow('Bedrock only supports bytes or s3:// URLs for media')
+      })
+    })
+
+    describe('video content', () => {
+      it('formats video block with bytes source', async () => {
+        const provider = new BedrockModel({})
+        const videoBytes = new Uint8Array([5, 6, 7, 8])
+
+        collectIterator(
+          provider.stream([
+            {
+              type: 'message',
+              role: 'user',
+              content: [new VideoBlock({ format: 'mp4', source: { bytes: videoBytes } })],
+            },
+          ])
+        )
+
+        expect(mockConverseStreamCommand).toHaveBeenLastCalledWith(
+          expect.objectContaining({
+            messages: [
+              {
+                role: 'user',
+                content: [
+                  {
+                    video: {
+                      format: 'mp4',
+                      source: { bytes: videoBytes },
+                    },
+                  },
+                ],
+              },
+            ],
+          })
+        )
+      })
+
+      it('formats video block with s3:// URL source', async () => {
+        const provider = new BedrockModel({})
+
+        collectIterator(
+          provider.stream([
+            {
+              type: 'message',
+              role: 'user',
+              content: [new VideoBlock({ format: 'webm', source: { url: 's3://bucket/video.webm' } })],
+            },
+          ])
+        )
+
+        expect(mockConverseStreamCommand).toHaveBeenLastCalledWith(
+          expect.objectContaining({
+            messages: [
+              {
+                role: 'user',
+                content: [
+                  {
+                    video: {
+                      format: 'webm',
+                      source: { s3Location: { uri: 's3://bucket/video.webm' } },
+                    },
+                  },
+                ],
+              },
+            ],
+          })
+        )
+      })
+
+      it('rejects video block with http:// URL', async () => {
+        const provider = new BedrockModel({})
+
+        await expect(async () => {
+          await collectIterator(
+            provider.stream([
+              {
+                type: 'message',
+                role: 'user',
+                content: [new VideoBlock({ format: 'mp4', source: { url: 'https://example.com/video.mp4' } })],
+              },
+            ])
+          )
+        }).rejects.toThrow('Bedrock only supports bytes or s3:// URLs for media')
+      })
+    })
+
+    describe('document content', () => {
+      it('formats document block with bytes source', async () => {
+        const provider = new BedrockModel({})
+        const docBytes = new Uint8Array([9, 10, 11])
+
+        collectIterator(
+          provider.stream([
+            {
+              type: 'message',
+              role: 'user',
+              content: [new DocumentBlock({ name: 'doc.pdf', format: 'pdf', source: { bytes: docBytes } })],
+            },
+          ])
+        )
+
+        expect(mockConverseStreamCommand).toHaveBeenLastCalledWith(
+          expect.objectContaining({
+            messages: [
+              {
+                role: 'user',
+                content: [
+                  {
+                    document: {
+                      name: 'doc.pdf',
+                      format: 'pdf',
+                      source: { bytes: docBytes },
+                    },
+                  },
+                ],
+              },
+            ],
+          })
+        )
+      })
+
+      it('formats document block with text source', async () => {
+        const provider = new BedrockModel({})
+
+        collectIterator(
+          provider.stream([
+            {
+              type: 'message',
+              role: 'user',
+              content: [new DocumentBlock({ name: 'notes.txt', format: 'txt', source: { text: 'Some text' } })],
+            },
+          ])
+        )
+
+        expect(mockConverseStreamCommand).toHaveBeenLastCalledWith(
+          expect.objectContaining({
+            messages: [
+              {
+                role: 'user',
+                content: [
+                  {
+                    document: {
+                      name: 'notes.txt',
+                      format: 'txt',
+                      source: { text: 'Some text' },
+                    },
+                  },
+                ],
+              },
+            ],
+          })
+        )
+      })
+
+      it('formats document block with structured content source (recursive)', async () => {
+        const provider = new BedrockModel({})
+        const imageBytes = new Uint8Array([1, 2])
+
+        collectIterator(
+          provider.stream([
+            {
+              type: 'message',
+              role: 'user',
+              content: [
+                new DocumentBlock({
+                  name: 'report.html',
+                  format: 'html',
+                  source: {
+                    content: [
+                      new TextBlock('Introduction'),
+                      new ImageBlock({ format: 'png', source: { bytes: imageBytes } }),
+                    ],
+                  },
+                }),
+              ],
+            },
+          ])
+        )
+
+        expect(mockConverseStreamCommand).toHaveBeenLastCalledWith(
+          expect.objectContaining({
+            messages: [
+              {
+                role: 'user',
+                content: [
+                  {
+                    document: {
+                      name: 'report.html',
+                      format: 'html',
+                      source: {
+                        content: [
+                          { text: 'Introduction' },
+                          { image: { format: 'png', source: { bytes: imageBytes } } },
+                        ],
+                      },
+                    },
+                  },
+                ],
+              },
+            ],
+          })
+        )
+      })
+
+      it('formats document block with s3:// URL source', async () => {
+        const provider = new BedrockModel({})
+
+        collectIterator(
+          provider.stream([
+            {
+              type: 'message',
+              role: 'user',
+              content: [
+                new DocumentBlock({ name: 'data.csv', format: 'csv', source: { url: 's3://bucket/data.csv' } }),
+              ],
+            },
+          ])
+        )
+
+        expect(mockConverseStreamCommand).toHaveBeenLastCalledWith(
+          expect.objectContaining({
+            messages: [
+              {
+                role: 'user',
+                content: [
+                  {
+                    document: {
+                      name: 'data.csv',
+                      format: 'csv',
+                      source: { s3Location: { uri: 's3://bucket/data.csv' } },
+                    },
+                  },
+                ],
+              },
+            ],
+          })
+        )
+      })
+
+      it('formats document block with citations enabled', async () => {
+        const provider = new BedrockModel({})
+
+        collectIterator(
+          provider.stream([
+            {
+              type: 'message',
+              role: 'user',
+              content: [
+                new DocumentBlock({
+                  name: 'research.pdf',
+                  format: 'pdf',
+                  source: { bytes: new Uint8Array([]) },
+                  citations: { enabled: true },
+                }),
+              ],
+            },
+          ])
+        )
+
+        expect(mockConverseStreamCommand).toHaveBeenLastCalledWith(
+          expect.objectContaining({
+            messages: [
+              {
+                role: 'user',
+                content: [
+                  {
+                    document: {
+                      name: 'research.pdf',
+                      format: 'pdf',
+                      source: { bytes: new Uint8Array([]) },
+                      citations: { enabled: true },
+                    },
+                  },
+                ],
+              },
+            ],
+          })
+        )
+      })
+
+      it('formats document block with context', async () => {
+        const provider = new BedrockModel({})
+
+        collectIterator(
+          provider.stream([
+            {
+              type: 'message',
+              role: 'user',
+              content: [
+                new DocumentBlock({
+                  name: 'manual.pdf',
+                  format: 'pdf',
+                  source: { bytes: new Uint8Array([]) },
+                  context: 'Product manual',
+                }),
+              ],
+            },
+          ])
+        )
+
+        expect(mockConverseStreamCommand).toHaveBeenLastCalledWith(
+          expect.objectContaining({
+            messages: [
+              {
+                role: 'user',
+                content: [
+                  {
+                    document: {
+                      name: 'manual.pdf',
+                      format: 'pdf',
+                      source: { bytes: new Uint8Array([]) },
+                      context: 'Product manual',
+                    },
+                  },
+                ],
+              },
+            ],
+          })
+        )
+      })
+
+      it('rejects document block with fileId', async () => {
+        const provider = new BedrockModel({})
+
+        await expect(async () => {
+          await collectIterator(
+            provider.stream([
+              {
+                type: 'message',
+                role: 'user',
+                content: [new DocumentBlock({ name: 'file.docx', format: 'docx', source: { fileId: 'file-123' } })],
+              },
+            ])
+          )
+        }).rejects.toThrow('Bedrock does not support OpenAI file references')
+      })
+
+      it('rejects document block with http:// URL', async () => {
+        const provider = new BedrockModel({})
+
+        await expect(async () => {
+          await collectIterator(
+            provider.stream([
+              {
+                type: 'message',
+                role: 'user',
+                content: [
+                  new DocumentBlock({ name: 'doc.pdf', format: 'pdf', source: { url: 'https://example.com/doc.pdf' } }),
+                ],
+              },
+            ])
+          )
+        }).rejects.toThrow('Bedrock only supports s3:// URLs for documents')
+      })
+    })
+
+    describe('citations content', () => {
+      it('formats citations content block', async () => {
+        const provider = new BedrockModel({})
+
+        collectIterator(
+          provider.stream([
+            {
+              type: 'message',
+              role: 'user',
+              content: [
+                new CitationsContentBlock({
+                  citations: [
+                    {
+                      location: { documentIndex: 0, start: 10, end: 50 },
+                      sourceContent: [{ text: 'Source text' }],
+                      title: 'Document 1',
+                    },
+                  ],
+                  content: [{ text: 'Generated content' }],
+                }),
+              ],
+            },
+          ])
+        )
+
+        expect(mockConverseStreamCommand).toHaveBeenLastCalledWith(
+          expect.objectContaining({
+            messages: [
+              {
+                role: 'user',
+                content: [
+                  {
+                    citationsContent: {
+                      citations: [
+                        {
+                          location: { documentIndex: 0, start: 10, end: 50 },
+                          sourceContent: [{ text: 'Source text' }],
+                          title: 'Document 1',
+                        },
+                      ],
+                      content: [{ text: 'Generated content' }],
+                    },
+                  },
+                ],
+              },
+            ],
+          })
+        )
+      })
+    })
+
+    describe('guard content', () => {
+      it('formats guard content block', async () => {
+        const provider = new BedrockModel({})
+
+        collectIterator(
+          provider.stream([
+            {
+              type: 'message',
+              role: 'user',
+              content: [
+                new GuardContentBlock({
+                  text: {
+                    qualifiers: ['query', 'guard_content'],
+                    text: 'Content to evaluate',
+                  },
+                }),
+              ],
+            },
+          ])
+        )
+
+        expect(mockConverseStreamCommand).toHaveBeenLastCalledWith(
+          expect.objectContaining({
+            messages: [
+              {
+                role: 'user',
+                content: [
+                  {
+                    guardContent: {
+                      text: {
+                        qualifiers: ['query', 'guard_content'],
+                        text: 'Content to evaluate',
+                      },
+                    },
+                  },
+                ],
+              },
+            ],
+          })
+        )
       })
     })
   })

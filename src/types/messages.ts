@@ -1,4 +1,8 @@
 import type { JSONValue } from './json.js'
+import type { ImageBlock, VideoBlock } from './media.js'
+import type { DocumentBlock } from './documents.js'
+import type { CitationsContentBlock } from './citations.js'
+import type { GuardContentBlock } from './guardrails.js'
 
 /**
  * Message types and content blocks for conversational AI interactions.
@@ -57,7 +61,8 @@ export type Role = 'user' | 'assistant'
 
 /**
  * A block of content within a message.
- * Content blocks can contain text, tool usage requests, tool results, reasoning content, or cache points.
+ * Content blocks can contain text, tool usage requests, tool results, reasoning content,
+ * cache points, images, videos, documents, citations, or guard content.
  *
  * This is a discriminated union where the object key determines the content format.
  *
@@ -75,7 +80,17 @@ export type ContentBlockData =
   | { reasoning: ReasoningBlockData }
   | { cachePoint: CachePointBlockData }
 
-export type ContentBlock = TextBlock | ToolUseBlock | ToolResultBlock | ReasoningBlock | CachePointBlock
+export type ContentBlock =
+  | TextBlock
+  | ToolUseBlock
+  | ToolResultBlock
+  | ReasoningBlock
+  | CachePointBlock
+  | ImageBlock
+  | VideoBlock
+  | DocumentBlock
+  | CitationsContentBlock
+  | GuardContentBlock
 
 /**
  * Data for a text block.

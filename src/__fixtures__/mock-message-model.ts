@@ -252,6 +252,17 @@ export class MockMessageModel extends Model<BaseModelConfig> {
         // This shouldn't normally be in assistant messages, but we'll handle it gracefully
         break
 
+      case 'imageBlock':
+      case 'videoBlock':
+      case 'documentBlock':
+      case 'citationsContentBlock':
+      case 'guardContentBlock':
+        // These content types don't generate streaming delta events
+        // They are static content blocks
+        yield { type: 'modelContentBlockStartEvent' }
+        yield { type: 'modelContentBlockStopEvent' }
+        break
+
       default: {
         // Exhaustive check
         const _exhaustive: never = block

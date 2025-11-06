@@ -32,6 +32,49 @@ export type {
 // Message classes
 export { TextBlock, ToolUseBlock, ToolResultBlock, ReasoningBlock, CachePointBlock, Message } from './types/messages.js'
 
+// Media types
+export type {
+  ImageFormat,
+  ImageSource,
+  ImageBlockData,
+  VideoFormat,
+  VideoSource,
+  VideoBlockData,
+} from './types/media.js'
+
+// Media classes
+export { ImageBlock, VideoBlock } from './types/media.js'
+
+// Document types
+export type {
+  DocumentFormat,
+  DocumentSource,
+  DocumentContentBlock,
+  DocumentBlockData,
+  CitationsConfig,
+} from './types/documents.js'
+
+// Document classes
+export { DocumentBlock } from './types/documents.js'
+
+// Citation types
+export type {
+  CitationLocation,
+  CitationSourceContent,
+  CitationGeneratedContent,
+  Citation,
+  CitationsContentBlockData,
+} from './types/citations.js'
+
+// Citation classes
+export { CitationsContentBlock } from './types/citations.js'
+
+// Guardrail types
+export type { GuardQualifier, GuardContentText, GuardContentBlockData } from './types/guardrails.js'
+
+// Guardrail classes
+export { GuardContentBlock } from './types/guardrails.js'
+
 // Tool types
 export type { ToolSpec, ToolUse, ToolResultStatus, ToolResult, ToolChoice } from './tools/types.js'
 

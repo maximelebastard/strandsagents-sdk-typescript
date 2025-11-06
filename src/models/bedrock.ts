@@ -28,6 +28,9 @@ import {
   type ToolUseBlockDelta,
   ReasoningContentBlockDelta,
   ReasoningContentBlock,
+  type ImageSource as BedrockImageSource,
+  type VideoSource as BedrockVideoSource,
+  type DocumentSource as BedrockDocumentSource,
 } from '@aws-sdk/client-bedrock-runtime'
 import { Model, type BaseModelConfig, type StreamOptions } from '../models/model.js'
 import type { Message, ContentBlock, ToolUseBlock } from '../types/messages.js'
@@ -35,6 +38,8 @@ import type { ModelStreamEvent, ReasoningContentDelta, Usage } from '../models/s
 import type { JSONValue } from '../types/json.js'
 import { ContextWindowOverflowError } from '../errors.js'
 import { ensureDefined } from '../types/validation.js'
+import type { ImageSource, VideoSource } from '../types/media.js'
+import type { DocumentSource } from '../types/documents.js'
 
 /**
  * Default Bedrock model ID.
@@ -568,7 +573,126 @@ export class BedrockModel extends Model<BedrockModelConfig> {
 
       case 'cachePointBlock':
         return { cachePoint: { type: block.cacheType } }
+
+      case 'imageBlock': {
+        const source = this._formatMediaSource(block.source)
+        return {
+          image: {
+            format: block.format,
+            source,
+          },
+        }
+      }
+
+      case 'videoBlock': {
+        const source = this._formatMediaSource(block.source)
+        return {
+          video: {
+            format: block.format as string,
+            source,
+          },
+        } as BedrockContentBlock
+      }
+
+      case 'documentBlock': {
+        const source = this._formatDocumentSource(block.source)
+        return {
+          document: {
+            name: block.name,
+            format: block.format,
+            source,
+            ...(block.citations && { citations: block.citations }),
+            ...(block.context && { context: block.context }),
+          },
+        }
+      }
+
+      case 'citationsContentBlock': {
+        return {
+          citationsContent: {
+            citations: block.citations.map((c) => ({
+              location: c.location,
+              sourceContent: c.sourceContent,
+              title: c.title,
+            })),
+            content: block.content,
+          },
+        } as BedrockContentBlock
+      }
+
+      case 'guardContentBlock': {
+        return {
+          guardContent: {
+            text: {
+              text: block.text.text,
+              qualifiers: block.text.qualifiers,
+            },
+          },
+        }
+      }
     }
+  }
+
+  /**
+   * Format media source (image/video) for Bedrock API.
+   * Handles bytes and S3 URLs.
+   *
+   * @param source - Image or video source
+   * @returns Formatted Bedrock media source
+   */
+  private _formatMediaSource(source: ImageSource | VideoSource): BedrockImageSource | BedrockVideoSource {
+    if ('bytes' in source) {
+      return { bytes: source.bytes }
+    }
+
+    if ('url' in source) {
+      if (source.url.startsWith('s3://')) {
+        return { s3Location: { uri: source.url } }
+      }
+      throw new Error(
+        'Bedrock only supports bytes or s3:// URLs for media. ' + 'HTTP URLs and data URIs are not supported.'
+      )
+    }
+
+    throw new Error('Invalid media source')
+  }
+
+  /**
+   * Format document source for Bedrock API.
+   * Handles bytes, text, content, and S3 URLs.
+   *
+   * @param source - Document source
+   * @returns Formatted Bedrock document source
+   */
+  private _formatDocumentSource(source: DocumentSource): BedrockDocumentSource {
+    if ('bytes' in source) {
+      return { bytes: source.bytes }
+    }
+
+    if ('text' in source) {
+      return { text: source.text }
+    }
+
+    if ('content' in source) {
+      return {
+        content: source.content.map((block) => this._formatContentBlock(block)),
+      }
+    }
+
+    if ('url' in source) {
+      if (source.url.startsWith('s3://')) {
+        return { s3Location: { uri: source.url } }
+      }
+      throw new Error('Bedrock only supports s3:// URLs for documents')
+    }
+
+    if ('fileId' in source || 'fileData' in source) {
+      throw new Error(
+        'Bedrock does not support OpenAI file references. ' + 'Use bytes, text, content, or s3:// URLs instead.'
+      )
+    }
+
+    throw new Error('Invalid document source')
   }
 
   private _mapBedrockEventToSDKEvent(event: ConverseCommandOutput): ModelStreamEvent[] {

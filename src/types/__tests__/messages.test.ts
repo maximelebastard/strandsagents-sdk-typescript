@@ -7,7 +7,12 @@ import {
   ReasoningBlock,
   CachePointBlock,
   JsonBlock,
+  type ContentBlock,
 } from '../messages.js'
+import { ImageBlock, VideoBlock } from '../media.js'
+import { DocumentBlock } from '../documents.js'
+import { CitationsContentBlock } from '../citations.js'
+import { GuardContentBlock } from '../guardrails.js'
 
 describe('Message', () => {
   test('creates message with role and content', () => {
@@ -97,5 +102,50 @@ describe('JsonBlock', () => {
       type: 'jsonBlock',
       json: { key: 'value' },
     })
+  })
+})
+
+describe('ContentBlock union', () => {
+  test('accepts ImageBlock', () => {
+    const imageBlock: ContentBlock = new ImageBlock({
+      format: 'jpeg',
+      source: { bytes: new Uint8Array([]) },
+    })
+    expect(imageBlock.type).toBe('imageBlock')
+  })
+
+  test('accepts VideoBlock', () => {
+    const videoBlock: ContentBlock = new VideoBlock({
+      format: 'mp4',
+      source: { bytes: new Uint8Array([]) },
+    })
+    expect(videoBlock.type).toBe('videoBlock')
+  })
+
+  test('accepts DocumentBlock', () => {
+    const documentBlock: ContentBlock = new DocumentBlock({
+      name: 'test.pdf',
+      format: 'pdf',
+      source: { bytes: new Uint8Array([]) },
+    })
+    expect(documentBlock.type).toBe('documentBlock')
+  })
+
+  test('accepts CitationsContentBlock', () => {
+    const citationsBlock: ContentBlock = new CitationsContentBlock({
+      citations: [],
+      content: [],
+    })
+    expect(citationsBlock.type).toBe('citationsContentBlock')
+  })
+
+  test('accepts GuardContentBlock', () => {
+    const guardBlock: ContentBlock = new GuardContentBlock({
+      text: {
+        qualifiers: ['query'],
+        text: 'test',
+      },
+    })
+    expect(guardBlock.type).toBe('guardContentBlock')
   })
 })
