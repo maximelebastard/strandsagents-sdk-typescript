@@ -20,7 +20,7 @@ import type { BaseModelConfig, Model, StreamOptions } from '../models/model.js'
 import { ToolRegistry } from '../registry/tool-registry.js'
 import { AgentState } from './state.js'
 import type { AgentData } from '../types/agent.js'
-import { AgentPrinter, getDefaultAppender, type Printer } from './printer.js'
+import { AgentPrinter, getDefaultAppender } from './printer.js'
 import type { HookProvider } from '../hooks/types.js'
 import { SlidingWindowConversationManager } from '../conversation-manager/sliding-window-conversation-manager.js'
 import { HookRegistryImplementation } from '../hooks/registry.js'
@@ -119,7 +119,6 @@ export class Agent implements AgentData {
   private _systemPrompt?: SystemPrompt
   private _initialized: boolean
   private _isInvoking: boolean = false
-  private _printer?: Printer
 
   /**
    * Creates an instance of the Agent.
@@ -145,10 +144,9 @@ export class Agent implements AgentData {
       this._systemPrompt = systemPromptFromData(config.systemPrompt)
     }
 
-    // Create printer if printer is enabled (default: true)
-    const printer = config?.printer ?? true
-    if (printer) {
-      this._printer = new AgentPrinter(getDefaultAppender())
+    // Create and register printer as a hook if enabled (default: true)
+    if (config?.printer ?? true) {
+      this.hooks.addHook(new AgentPrinter(getDefaultAppender()))
     }
 
     this._initialized = false
@@ -274,7 +272,6 @@ export class Agent implements AgentData {
         await this.hooks.invokeCallbacks(event)
       }
 
-      this._printer?.processEvent(event)
       yield event
       result = await streamGenerator.next()
     }
@@ -448,6 +445,8 @@ export class Agent implements AgentData {
       const toolResultBlock = yield* this.executeTool(toolUseBlock, toolRegistry)
       toolResultBlocks.push(toolResultBlock)
 
+      // Wrap ToolResultBlock in hook event for printer
+      yield new ModelStreamEventHook({ agent: this, event: toolResultBlock })
       // Yield the tool result block as it's created
       yield toolResultBlock
     }
