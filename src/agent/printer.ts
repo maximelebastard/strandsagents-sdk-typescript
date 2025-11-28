@@ -1,7 +1,7 @@
 import type { AgentStreamEvent } from '../types/agent.js'
 import type { HookProvider } from '../hooks/types.js'
 import type { HookRegistry } from '../hooks/registry.js'
-import { ModelStreamEventHook } from '../hooks/events.js'
+import { ContentBlockHook, ModelStreamEventHook } from '../hooks/events.js'
 
 /**
  * Creates a default appender function for the current environment.
@@ -41,6 +41,7 @@ export class AgentPrinter implements HookProvider {
    */
   public registerCallbacks(registry: HookRegistry): void {
     registry.addCallback(ModelStreamEventHook, this.handleModelStreamEvent)
+    registry.addCallback(ContentBlockHook, this.handleContentBlock)
   }
 
   /**
@@ -49,6 +50,14 @@ export class AgentPrinter implements HookProvider {
    */
   private handleModelStreamEvent = (event: ModelStreamEventHook): void => {
     this.processEvent(event.event)
+  }
+
+  /**
+   * Handle content block events and process them for printing.
+   * @param event - The content block event to handle
+   */
+  private handleContentBlock = (event: ContentBlockHook): void => {
+    this.processEvent(event.block)
   }
 
   /**

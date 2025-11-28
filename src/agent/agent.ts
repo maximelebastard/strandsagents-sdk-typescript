@@ -13,10 +13,12 @@ import {
   type ToolContext,
   ToolResultBlock,
   type ToolUseBlock,
+  type ContentBlock,
 } from '../index.js'
 import { systemPromptFromData } from '../types/messages.js'
 import { normalizeError, ConcurrentInvocationError, MaxTokensError } from '../errors.js'
 import type { BaseModelConfig, Model, StreamOptions } from '../models/model.js'
+import type { ModelStreamEvent } from '../models/streaming.js'
 import { ToolRegistry } from '../registry/tool-registry.js'
 import { AgentState } from './state.js'
 import type { AgentData } from '../types/agent.js'
@@ -36,6 +38,7 @@ import {
   BeforeToolsEvent,
   MessageAddedEvent,
   ModelStreamEventHook,
+  ContentBlockHook,
 } from '../hooks/events.js'
 
 /**
@@ -404,8 +407,14 @@ export class Agent implements AgentData {
     while (!result.done) {
       const event = result.value
 
-      // Yield hook event for observability
-      yield new ModelStreamEventHook({ agent: this, event })
+      // Yield appropriate hook event for observability
+      if ('type' in event && typeof event.type === 'string' && event.type.endsWith('Block')) {
+        // This is a ContentBlock
+        yield new ContentBlockHook({ agent: this, block: event as ContentBlock })
+      } else {
+        // This is a ModelStreamEvent
+        yield new ModelStreamEventHook({ agent: this, event: event as ModelStreamEvent })
+      }
 
       // Yield the actual model event
       yield event
@@ -446,7 +455,7 @@ export class Agent implements AgentData {
       toolResultBlocks.push(toolResultBlock)
 
       // Wrap ToolResultBlock in hook event for printer
-      yield new ModelStreamEventHook({ agent: this, event: toolResultBlock })
+      yield new ContentBlockHook({ agent: this, block: toolResultBlock })
       // Yield the tool result block as it's created
       yield toolResultBlock
     }
